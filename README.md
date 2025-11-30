@@ -20,11 +20,11 @@ A FastAPI-based service for automatically assigning volunteers to shifts based o
 ### Setup
 
 ```bash
-# Install dependencies
-pip install fastapi uvicorn pydantic python-multipart
-
 # Navigate to the project directory
-cd /Users/arnavshah/Documents/management_simple
+cd management_simple
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ## Running the Server
