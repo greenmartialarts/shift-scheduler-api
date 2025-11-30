@@ -23,7 +23,7 @@ class Volunteer:
     id: str
     name: str
     group: Optional[str]
-    max_hours: float
+    max_hours: float = float('inf')
     assigned_hours: float = 0.0
     assigned_shifts: List[str] = field(default_factory=list)
 

@@ -11,6 +11,9 @@ A FastAPI-based service for automatically assigning volunteers to shifts based o
 - **Flexible Input**: Supports both JSON and CSV input formats
 - **Detailed Reporting**: Generates assignment reports and identifies unfilled shifts
 
+## Try the API Here :
+https://shift-scheduler-api-j4wh.onrender.com
+
 ## Installation
 
 ### Prerequisites
@@ -120,7 +123,7 @@ s1,v1,John Doe,2025-12-01T09:00,2025-12-01T11:00,2.00
 | `id` | string | Yes | Unique volunteer identifier |
 | `name` | string | Yes | Volunteer's full name |
 | `group` | string | No | Volunteer's group/role (e.g., "Delegates", "Adults") |
-| `max_hours` | float | Yes | Maximum hours volunteer can work |
+| `max_hours` | float | No | Maximum hours volunteer can work |
 
 ## Shift Model
 
