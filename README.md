@@ -75,15 +75,39 @@ API documentation (Swagger UI) is available at `http://localhost:8000/docs`
 }
 ```
 
-**Response**:
+**Success Response (200)**:
 ```json
 {
   "assigned_shifts": {
-    "s1": ["v1", "v2"]
+    "s1": ["v1", "v2", "v3", "v4"]
   },
-  "unfilled_shifts": [
-    ["s1", "Adults", 1]
-  ]
+  "unfilled_shifts": []
+}
+```
+
+**Error Response (422)** - When scheduling is impossible/incomplete:
+```json
+{
+  "detail": {
+    "error": "Unable to fill all shifts",
+    "unfilled_shifts": [
+      ["s1", "Delegates", 1],
+      ["s1", "Adults", 1]
+    ],
+    "assigned_shifts": {
+      "s1": ["v1", "v2"]
+    },
+    "volunteers": {
+      "v1": {
+        "assigned_hours": 2.0,
+        "assigned_shifts": ["s1"]
+      },
+      "v2": {
+        "assigned_hours": 2.0,
+        "assigned_shifts": ["s1"]
+      }
+    }
+  }
 }
 ```
 
@@ -110,10 +134,28 @@ id,start,end,required_groups,allowed_groups,excluded_groups
 s1,2025-12-01T09:00,2025-12-01T11:00,Delegates:2|Adults:2,Delegates|Adults,
 ```
 
-**Response**: CSV data with assignment details
+**Success Response (200)**: CSV data with assignment details
 ```csv
 shift_id,volunteer_id,volunteer_name,start,end,duration_hours
 s1,v1,John Doe,2025-12-01T09:00,2025-12-01T11:00,2.00
+s1,v2,Jane Smith,2025-12-01T09:00,2025-12-01T11:00,2.00
+```
+
+**Error Response (422)** - When scheduling is impossible/incomplete, returns JSON (not CSV):
+```json
+{
+  "detail": {
+    "error": "Unable to fill all shifts",
+    "unfilled_shifts": [["s1", "Adults", 1]],
+    "assigned_shifts": {"s1": ["v1"]},
+    "volunteers": {
+      "v1": {
+        "assigned_hours": 2.0,
+        "assigned_shifts": ["s1"]
+      }
+    }
+  }
+}
 ```
 
 ## Volunteer Model
@@ -165,7 +207,33 @@ curl -X POST "http://localhost:8000/schedule/csv" \
 
 ## Error Handling
 
-The API returns HTTP 400 errors with details for invalid inputs:
+### HTTP 422 - Unprocessable Entity (Impossible Schedule)
+
+Returned when the scheduler cannot fill all shifts due to insufficient volunteers, conflicts, or capacity constraints. The response includes the partial schedule that was achieved:
+
+```json
+{
+  "detail": {
+    "error": "Unable to fill all shifts",
+    "unfilled_shifts": [
+      ["shift_id", "group_name", shortage_count]
+    ],
+    "assigned_shifts": {
+      "shift_id": ["volunteer_ids"]
+    },
+    "volunteers": {
+      "volunteer_id": {
+        "assigned_hours": 0.0,
+        "assigned_shifts": []
+      }
+    }
+  }
+}
+```
+
+### HTTP 400 - Bad Request (Invalid Input)
+
+Returned for invalid inputs such as malformed data or missing required fields:
 
 ```json
 {
@@ -173,7 +241,7 @@ The API returns HTTP 400 errors with details for invalid inputs:
 }
 ```
 
-Common errors:
+Common causes:
 - Invalid date format (must be ISO 8601: YYYY-MM-DDTHH:MM)
 - Missing required fields
 - Malformed CSV data

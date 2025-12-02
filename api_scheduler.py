@@ -44,10 +44,25 @@ def schedule_json(input_data: ScheduleInput):
     try:
         sched = build_scheduler(input_data.volunteers, input_data.shifts)
         result = sched.assign()
+        
+        # If there are unfilled shifts, return error with partial schedule
+        if result["unfilled_shifts"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "Unable to fill all shifts",
+                    "unfilled_shifts": result["unfilled_shifts"],
+                    "assigned_shifts": result["assigned_shifts"],
+                    "volunteers": result["volunteers"]
+                }
+            )
+        
         return {
             "assigned_shifts": result["assigned_shifts"],
             "unfilled_shifts": result["unfilled_shifts"]
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -89,6 +104,18 @@ async def schedule_csv(volunteers_file: UploadFile = File(...), shifts_file: Upl
         sched = Scheduler(volunteers, shifts)
         result = sched.assign()
 
+        # If there are unfilled shifts, return error with partial schedule
+        if result["unfilled_shifts"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "Unable to fill all shifts",
+                    "unfilled_shifts": result["unfilled_shifts"],
+                    "assigned_shifts": result["assigned_shifts"],
+                    "volunteers": result["volunteers"]
+                }
+            )
+
         # Export CSV
         out_csv = io.StringIO()
         writer = csv.writer(out_csv)
@@ -100,5 +127,7 @@ async def schedule_csv(volunteers_file: UploadFile = File(...), shifts_file: Upl
         out_csv.seek(0)
         return {"csv": out_csv.getvalue()}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
