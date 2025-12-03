@@ -3,11 +3,18 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Set, Tuple
+from enum import Enum
 import csv
 import json
 import io
 
 ISO_FMT = "%Y-%m-%dT%H:%M"
+
+class OptimizationStrategy(str, Enum):
+    """Optimization strategies for shift assignment"""
+    MINIMIZE_UNFILLED = "minimize_unfilled"  # Default: Fill as many shifts as possible (current behavior)
+    MAXIMIZE_FAIRNESS = "maximize_fairness"  # Distribute hours evenly across volunteers
+    MINIMIZE_OVERTIME = "minimize_overtime"  # Prioritize volunteers with most available capacity
 
 def parse_iso(s: str) -> datetime:
     return datetime.strptime(s, ISO_FMT)
@@ -64,7 +71,19 @@ class Scheduler:
                 return True
         return False
 
-    def assign(self):
+    def assign(self, strategy: str = OptimizationStrategy.MINIMIZE_UNFILLED):
+        """
+        Assign volunteers to shifts using the specified optimization strategy.
+        
+        Args:
+            strategy: Optimization strategy to use. Options:
+                - "minimize_unfilled": Fill as many shifts as possible (default, current behavior)
+                - "maximize_fairness": Distribute hours evenly across volunteers
+                - "minimize_overtime": Prioritize volunteers with most available capacity
+        
+        Returns:
+            Dictionary containing assigned_shifts, unfilled_shifts, and volunteer details
+        """
         unfilled_shifts = []
 
         for shift in self.shifts.values():
@@ -73,8 +92,26 @@ class Scheduler:
                 candidates = [v for v in self.volunteers.values()
                               if v.group == group and shift.allows(v) and not self._would_overlap(v, shift)
                               and v.assigned_hours + shift.duration_hours() <= v.max_hours + 1e-9]
-                # sort by least hours assigned
-                candidates.sort(key=lambda x: (x.assigned_hours, len(x.assigned_shifts), -x.max_hours))
+                
+                # Apply strategy-specific sorting
+                if strategy == OptimizationStrategy.MINIMIZE_UNFILLED:
+                    # Default: Prioritize volunteers with least hours (greedy approach)
+                    candidates.sort(key=lambda x: (x.assigned_hours, len(x.assigned_shifts), -x.max_hours))
+                
+                elif strategy == OptimizationStrategy.MAXIMIZE_FAIRNESS:
+                    # Fairness: Prioritize volunteers with least hours, then least shifts
+                    # This naturally balances workload by always choosing least-loaded volunteers
+                    candidates.sort(key=lambda x: (x.assigned_hours, len(x.assigned_shifts)))
+                
+                elif strategy == OptimizationStrategy.MINIMIZE_OVERTIME:
+                    # Minimize overtime: Prioritize volunteers with most available capacity
+                    # Helps prevent approaching max_hours limits
+                    candidates.sort(key=lambda x: (
+                        x.assigned_hours / x.max_hours if x.max_hours != float('inf') else 0,  # Percentage used
+                        x.assigned_hours,  # Then by absolute hours
+                        len(x.assigned_shifts)
+                    ))
+                
                 assigned_count = 0
                 for v in candidates:
                     if assigned_count >= count:

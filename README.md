@@ -5,11 +5,57 @@ A FastAPI-based service for automatically assigning volunteers to shifts based o
 ## Features
 
 - **Automatic Shift Assignment**: Intelligently assigns volunteers to shifts while respecting constraints
+- **Multiple Optimization Strategies**: Choose from three strategies to optimize different goals
 - **Group-Based Requirements**: Specify required volunteer groups for each shift
 - **Time Conflict Detection**: Prevents overlapping shift assignments
 - **Capacity Management**: Respects maximum hours per volunteer
 - **Flexible Input**: Supports both JSON and CSV input formats
 - **Detailed Reporting**: Generates assignment reports and identifies unfilled shifts
+
+## Optimization Strategies
+
+The scheduler supports three optimization strategies to meet different scheduling goals:
+
+### 1. `minimize_unfilled` (Default)
+**Goal**: Fill as many shift positions as possible
+
+- Uses greedy algorithm prioritizing volunteers with fewest hours
+- Maintains backward compatibility with existing implementations
+- **Best for**: Ensuring maximum shift coverage
+
+### 2. `maximize_fairness`
+**Goal**: Distribute hours evenly across all volunteers
+
+- Balances workload by consistently selecting least-loaded volunteers
+- Reduces variance in hours assigned between volunteers
+- May result in slightly more unfilled shifts to achieve fairness
+- **Best for**: Ensuring equitable work distribution
+
+### 3. `minimize_overtime`
+**Goal**: Prioritize volunteers with most available capacity
+
+- Assigns volunteers furthest from their max_hours limits first
+- Helps prevent volunteers from exceeding hour limits
+- Reduces burnout risk
+- **Best for**: Managing volunteer capacity and preventing overwork
+
+### How to Specify Strategy
+
+**JSON Endpoint**: Include `strategy` in request body (optional, defaults to `minimize_unfilled`)
+```json
+{
+  "volunteers": [...],
+  "shifts": [...],
+  "strategy": "maximize_fairness"
+}
+```
+
+**CSV Endpoint**: Add `strategy` as a query parameter (optional, defaults to `minimize_unfilled`)
+```bash
+curl -X POST "http://localhost:8000/schedule/csv?strategy=minimize_overtime" \
+  -F "volunteers_file=@volunteers.csv" \
+  -F "shifts_file=@shifts.csv"
+```
 
 ## Try the API Here :
 https://shift-scheduler-api-j4wh.onrender.com
@@ -71,9 +117,12 @@ API documentation (Swagger UI) is available at `http://localhost:8000/docs`
       "allowed_groups": ["Delegates", "Adults"],
       "excluded_groups": null
     }
-  ]
+  ],
+  "strategy": "minimize_unfilled"
 }
 ```
+
+**Note**: The `strategy` field is optional and defaults to `"minimize_unfilled"`. Valid values: `"minimize_unfilled"`, `"maximize_fairness"`, `"minimize_overtime"`.
 
 **Success Response (200)**:
 ```json
@@ -133,6 +182,9 @@ v2,Jane Smith,Adults,10.0
 id,start,end,required_groups,allowed_groups,excluded_groups
 s1,2025-12-01T09:00,2025-12-01T11:00,Delegates:2|Adults:2,Delegates|Adults,
 ```
+
+**Optional Query Parameter**:
+- `strategy`: Optimization strategy (default: `minimize_unfilled`). Valid values: `minimize_unfilled`, `maximize_fairness`, `minimize_overtime`
 
 **Success Response (200)**: CSV data with assignment details
 ```csv
@@ -194,13 +246,27 @@ The scheduler uses a greedy assignment approach:
 ## Example Usage
 
 ```bash
-# Using curl with JSON
+# Using curl with JSON (default strategy)
 curl -X POST "http://localhost:8000/schedule/json" \
   -H "Content-Type: application/json" \
   -d @schedule_request.json
 
-# Using curl with CSV files
+# Using curl with JSON (maximize fairness)
+curl -X POST "http://localhost:8000/schedule/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "volunteers": [...],
+    "shifts": [...],
+    "strategy": "maximize_fairness"
+  }'
+
+# Using curl with CSV files (default strategy)
 curl -X POST "http://localhost:8000/schedule/csv" \
+  -F "volunteers_file=@volunteers.csv" \
+  -F "shifts_file=@shifts.csv"
+
+# Using curl with CSV files (minimize overtime)
+curl -X POST "http://localhost:8000/schedule/csv?strategy=minimize_overtime" \
   -F "volunteers_file=@volunteers.csv" \
   -F "shifts_file=@shifts.csv"
 ```
