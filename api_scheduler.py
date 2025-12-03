@@ -1,8 +1,8 @@
 # api_scheduler.py
-from fastapi import FastAPI, HTTPException, File, UploadFile, Query
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, File, UploadFile
+from pydantic import BaseModel
 from typing import List, Dict, Optional
-from scheduler import Volunteer, Shift, Scheduler, parse_iso, OptimizationStrategy
+from scheduler import Volunteer, Shift, Scheduler, parse_iso
 import csv, io
 
 app = FastAPI(title="Volunteer Scheduler API")
@@ -24,10 +24,6 @@ class ShiftInput(BaseModel):
 class ScheduleInput(BaseModel):
     volunteers: List[VolunteerInput]
     shifts: List[ShiftInput]
-    strategy: Optional[str] = Field(
-        default="minimize_unfilled",
-        description="Optimization strategy: minimize_unfilled, maximize_fairness, or minimize_overtime"
-    )
 
 def build_scheduler(vols_input: List[VolunteerInput], shifts_input: List[ShiftInput]) -> Scheduler:
     volunteers = {v.id: Volunteer(**v.dict()) for v in vols_input}
@@ -46,17 +42,8 @@ def build_scheduler(vols_input: List[VolunteerInput], shifts_input: List[ShiftIn
 @app.post("/schedule/json")
 def schedule_json(input_data: ScheduleInput):
     try:
-        # Validate strategy
-        strategy = input_data.strategy
-        valid_strategies = [s.value for s in OptimizationStrategy]
-        if strategy not in valid_strategies:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid strategy '{strategy}'. Must be one of: {', '.join(valid_strategies)}"
-            )
-        
         sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign(strategy=strategy)
+        result = sched.assign()
         
         # If there are unfilled shifts, return error with partial schedule
         if result["unfilled_shifts"]:
@@ -80,22 +67,8 @@ def schedule_json(input_data: ScheduleInput):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/schedule/csv")
-async def schedule_csv(
-    volunteers_file: UploadFile = File(...),
-    shifts_file: UploadFile = File(...),
-    strategy: str = Query(
-        default="minimize_unfilled",
-        description="Optimization strategy: minimize_unfilled, maximize_fairness, or minimize_overtime"
-    )
-):
+async def schedule_csv(volunteers_file: UploadFile = File(...), shifts_file: UploadFile = File(...)):
     try:
-        # Validate strategy
-        valid_strategies = [s.value for s in OptimizationStrategy]
-        if strategy not in valid_strategies:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid strategy '{strategy}'. Must be one of: {', '.join(valid_strategies)}"
-            )
         # Read volunteers CSV
         v_text = (await volunteers_file.read()).decode()
         volunteers = {}
@@ -129,7 +102,7 @@ async def schedule_csv(
             )
 
         sched = Scheduler(volunteers, shifts)
-        result = sched.assign(strategy=strategy)
+        result = sched.assign()
 
         # If there are unfilled shifts, return error with partial schedule
         if result["unfilled_shifts"]:
