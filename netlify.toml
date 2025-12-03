@@ -1,0 +1,6 @@
+[build]
+  command = "pip install -r requirements.txt && uvicorn api_scheduler:app"
+  publish = "."
+
+[functions]
+  directory = "functions"

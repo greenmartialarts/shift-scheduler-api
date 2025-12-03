@@ -78,13 +78,29 @@ pip install -r requirements.txt
 
 ## Running the Server
 
+### Local Development
 ```bash
+# With auto-reload (development)
 uvicorn api_scheduler:app --reload
+```
+
+### Production
+```bash
+# Without auto-reload
+uvicorn api_scheduler:app
 ```
 
 The API will be available at `http://localhost:8000`
 
 API documentation (Swagger UI) is available at `http://localhost:8000/docs`
+
+### Deploying to Netlify
+
+A `netlify.toml` file is included that automatically:
+1. Installs dependencies from `requirements.txt`
+2. Starts the uvicorn server
+
+Just push to your repository and Netlify will build and deploy automatically.
 
 ## API Endpoints
 
