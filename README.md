@@ -98,17 +98,31 @@ The API will be available at `http://localhost:8000`
 
 API documentation (Swagger UI) is available at `http://localhost:8000/docs`
 
-### Deploying to Render
+### Deploying to Railway
 
-This project is configured for deployment on [Render](https://render.com):
+This project is configured for deployment on [Railway](https://railway.app):
 
-1. Create a free account at https://render.com
-2. Click "New +" → "Web Service"
-3. Connect your GitHub repository
-4. Render will automatically detect `Procfile` and deploy
-5. Your API will be live at your Render URL
+**Option 1: Using Railway CLI (Quickest)**
+```bash
+# Install Railway CLI: https://docs.railway.app/guides/cli
+npm install -g @railway/cli
 
-No additional configuration needed - the `Procfile` handles everything!
+# Login and deploy
+railway login
+railway up
+```
+
+**Option 2: Using GitHub Integration**
+1. Create a free account at https://railway.app
+2. Click "New Project" → "Deploy from GitHub"
+3. Select your repository
+4. Railway automatically detects the `Dockerfile` and deploys
+5. Your API will be live at the generated Railway URL
+
+**Environment Variables** (Railway sets automatically):
+- `PORT`: Automatically set by Railway (default 8000)
+
+The `Dockerfile` and `railway.json` handle all configuration automatically!
 
 ## API Endpoints
 
