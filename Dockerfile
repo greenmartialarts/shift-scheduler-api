@@ -9,8 +9,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Expose port (Railway will set PORT env var)
+# Copy and make start script executable
+COPY start.sh .
+RUN chmod +x start.sh
+
+# Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "api_scheduler:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the start script
+CMD ["./start.sh"]
