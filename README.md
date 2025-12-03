@@ -58,7 +58,7 @@ curl -X POST "http://localhost:8000/schedule/csv?strategy=minimize_overtime" \
 ```
 
 ## Try the API Here :
-https://shift-scheduler-api-j4wh.onrender.com
+https://shift-scheduler-api-production.up.railway.app/docs
 
 ## Installation
 
