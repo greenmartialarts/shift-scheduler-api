@@ -296,8 +296,7 @@ class Scheduler:
     def assign_cp_sat_chunked(self, chunk_size: int = 5, timeout_per_chunk: float = 5.0):
         """
         Solve scheduling in smaller chunks to reduce memory usage.
-        chunk_size: number of shifts per chunk
-        timeout_per_chunk: timeout in seconds for each chunk
+        Prevent double booking by enforcing already assigned shifts.
         """
         # Sort shifts by start time or difficulty (largest required first)
         shifts_sorted = sorted(self.shifts.values(), key=lambda s: (-sum(s.required_groups.values()), s.start))
@@ -312,6 +311,16 @@ class Scheduler:
             chunk_shifts = {s.id: s for s in chunk}
             temp_scheduler = Scheduler(self.volunteers, chunk_shifts)
             
+            # Pre-fill existing assignments so CP-SAT won't double book
+            for v in self.volunteers.values():
+                for sid in v.assigned_shifts:
+                    # Only block overlaps in this chunk
+                    if sid in chunk_shifts:
+                        continue
+                    # Add a pseudo-shift to _assign_map so overlaps are detected
+                    shift = self.shifts[sid]
+                    temp_scheduler._assign_map[v.id].append((shift.id, shift.start, shift.end))
+            
             # Solve CP-SAT for this chunk
             temp_scheduler.assign_cp_sat(timeout=timeout_per_chunk)
             
@@ -323,6 +332,7 @@ class Scheduler:
                     if s.id not in v.assigned_shifts:
                         v.assigned_shifts.append(s.id)
                         v.assigned_hours += s.duration_hours()
+
         # Collect unfilled shifts
         unfilled = []
         for s in self.shifts.values():
