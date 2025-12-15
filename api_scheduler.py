@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 from scheduler import Volunteer, Shift, Scheduler, parse_iso
 import csv, io
-from ortools.sat.python import cp_model
 
 app = FastAPI(title="Volunteer Scheduler API",
     description="API for assigning volunteers to shifts with both greedy and optimal algorithms.",
@@ -210,7 +209,7 @@ async def schedule_csv_optimal(volunteers_file: UploadFile = File(...), shifts_f
 def schedule_json_cpsat(input_data: ScheduleInput, timeout: float = 5.0):
     try:
         sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign_cp_sat(timeout=timeout)
+        result = sched.assign_cp_sat_chunked(timeout=timeout)
         return {
             "assigned_shifts": result["assigned_shifts"],
             "unfilled_shifts": result["unfilled_shifts"]
@@ -255,7 +254,7 @@ async def schedule_csv_cpsat(volunteers_file: UploadFile = File(...), shifts_fil
             )
 
         sched = Scheduler(volunteers, shifts)
-        result = sched.assign_cp_sat(timeout=timeout)
+        result = sched.assign_cp_sat_chunked(timeout=timeout)
 
         # Export CSV
         out_csv = io.StringIO()

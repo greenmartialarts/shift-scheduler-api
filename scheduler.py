@@ -292,3 +292,47 @@ class Scheduler:
                 v = self.volunteers[vid]
                 writer.writerow([s.id, v.id, v.name, s.start.strftime(ISO_FMT), s.end.strftime(ISO_FMT), f"{s.duration_hours():.2f}"])
         return out.getvalue()
+
+    def assign_cp_sat_chunked(self, chunk_size: int = 5, timeout_per_chunk: float = 5.0):
+        """
+        Solve scheduling in smaller chunks to reduce memory usage.
+        chunk_size: number of shifts per chunk
+        timeout_per_chunk: timeout in seconds for each chunk
+        """
+        # Sort shifts by start time or difficulty (largest required first)
+        shifts_sorted = sorted(self.shifts.values(), key=lambda s: (-sum(s.required_groups.values()), s.start))
+        
+        # Break shifts into chunks
+        chunks = [shifts_sorted[i:i+chunk_size] for i in range(0, len(shifts_sorted), chunk_size)]
+        
+        for chunk_idx, chunk in enumerate(chunks, 1):
+            print(f"Solving chunk {chunk_idx}/{len(chunks)} with {len(chunk)} shifts")
+            
+            # Build a temporary Scheduler for this chunk
+            chunk_shifts = {s.id: s for s in chunk}
+            temp_scheduler = Scheduler(self.volunteers, chunk_shifts)
+            
+            # Solve CP-SAT for this chunk
+            temp_scheduler.assign_cp_sat(timeout=timeout_per_chunk)
+            
+            # Merge assignments back to main Scheduler
+            for s in chunk:
+                self.shifts[s.id].assigned = s.assigned
+                for vid in s.assigned:
+                    v = self.volunteers[vid]
+                    if s.id not in v.assigned_shifts:
+                        v.assigned_shifts.append(s.id)
+                        v.assigned_hours += s.duration_hours()
+        # Collect unfilled shifts
+        unfilled = []
+        for s in self.shifts.values():
+            for g, c in s.required_groups.items():
+                assigned_count = sum(1 for vid in s.assigned if self.volunteers[vid].group == g)
+                if assigned_count < c:
+                    unfilled.append((s.id, g, c - assigned_count))
+        
+        return {
+            "assigned_shifts": {s.id: s.assigned for s in self.shifts.values()},
+            "unfilled_shifts": unfilled,
+            "volunteers": {v.id: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for v in self.volunteers.values()}
+        }
