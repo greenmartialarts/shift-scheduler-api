@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Set, Tuple
 import csv
 import io
 import time
+from ortools.sat.python import cp_model
 
 ISO_FMT = "%Y-%m-%dT%H:%M"
 
@@ -188,6 +189,85 @@ class Scheduler:
             "assigned_shifts": {sid: s.assigned for sid, s in self.shifts.items()},
             "unfilled_shifts": unfilled,
             "volunteers": {vid: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for vid, v in self.volunteers.items()},
+        }
+    
+    def assign_cp_sat(self, timeout: float = 5.0):
+        """
+        Solve scheduling using Google OR-Tools CP-SAT solver.
+        Returns same dict structure as assign() and assign_optimal().
+        """
+        model = cp_model.CpModel()
+
+        # Create variables: x[v.id, s.id] = 1 if volunteer v assigned to shift s
+        x = {}
+        all_volunteers = list(self.volunteers.values())
+        all_shifts = list(self.shifts.values())
+
+        for v in all_volunteers:
+            for s in all_shifts:
+                # Only allow assignment if volunteer can work the shift
+                if s.allows(v) and v.group in s.required_groups:
+                    x[(v.id, s.id)] = model.NewBoolVar(f"x_{v.id}_{s.id}")
+
+        # 1. Shift coverage constraints
+        for s in all_shifts:
+            for g, count in s.required_groups.items():
+                candidates = [v for v in all_volunteers if v.group == g and (v.id, s.id) in x]
+                model.Add(sum(x[(v.id, s.id)] for v in candidates) <= count)
+                # Optional: try to maximize coverage later
+
+        # 2. Volunteer max hours constraints
+        for v in all_volunteers:
+            model.Add(
+                sum(int(s.duration_hours() * 100) * x[(v.id, s.id)] for s in all_shifts if (v.id, s.id) in x)
+                <= int(v.max_hours * 100)
+            )
+
+        # 3. No overlapping shifts
+        for v in all_volunteers:
+            for i, s1 in enumerate(all_shifts):
+                for j, s2 in enumerate(all_shifts):
+                    if i >= j:
+                        continue
+                    if (v.id, s1.id) in x and (v.id, s2.id) in x and overlap(s1.start, s1.end, s2.start, s2.end):
+                        model.AddBoolOr([x[(v.id, s1.id)].Not(), x[(v.id, s2.id)].Not()])
+
+        # Objective: maximize total assigned shifts + balance hours
+        obj_terms = []
+        for (v_id, s_id), var in x.items():
+            obj_terms.append(var)  # each assigned shift counts as 1
+        model.Maximize(sum(obj_terms))
+
+        # Solve with timeout
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = timeout
+        status = solver.Solve(model)
+
+        # Apply solution
+        for s in all_shifts:
+            s.assigned.clear()
+        for v in all_volunteers:
+            v.assigned_shifts.clear()
+            v.assigned_hours = 0.0
+
+        for (v_id, s_id), var in x.items():
+            if solver.Value(var):
+                self.shifts[s_id].assigned.append(v_id)
+                self.volunteers[v_id].assigned_shifts.append(s_id)
+                self.volunteers[v_id].assigned_hours += self.shifts[s_id].duration_hours()
+
+        # Collect unfilled shifts
+        unfilled = []
+        for s in all_shifts:
+            for g, c in s.required_groups.items():
+                assigned_count = sum(1 for vid in s.assigned if self.volunteers[vid].group == g)
+                if assigned_count < c:
+                    unfilled.append((s.id, g, c - assigned_count))
+
+        return {
+            "assigned_shifts": {s.id: s.assigned for s in all_shifts},
+            "unfilled_shifts": unfilled,
+            "volunteers": {v.id: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for v in all_volunteers}
         }
 
     # --------------------
