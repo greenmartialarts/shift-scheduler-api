@@ -209,7 +209,7 @@ async def schedule_csv_optimal(volunteers_file: UploadFile = File(...), shifts_f
 def schedule_json_cpsat(input_data: ScheduleInput, timeout: float = 5.0):
     try:
         sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign_cp_sat_chunked()
+        result = sched.assign_cp_sat_chunked(chunk_size=5, timeout_per_chunk=timeout)
         return {
             "assigned_shifts": result["assigned_shifts"],
             "unfilled_shifts": result["unfilled_shifts"]
@@ -254,7 +254,7 @@ async def schedule_csv_cpsat(volunteers_file: UploadFile = File(...), shifts_fil
             )
 
         sched = Scheduler(volunteers, shifts)
-        result = sched.assign_cp_sat_chunked()
+        result = sched.assign_cp_sat_chunked(chunk_size=5, timeout_per_chunk=timeout)
 
         # Export CSV
         out_csv = io.StringIO()
