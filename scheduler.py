@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Set, Tuple
 import csv
-import json
 import io
+import time
 
 ISO_FMT = "%Y-%m-%dT%H:%M"
 
 def parse_iso(s: str) -> datetime:
+    """Parse ISO datetime in scheduler format."""
     return datetime.strptime(s, ISO_FMT)
 
 def duration_hours(start: datetime, end: datetime) -> float:
@@ -47,11 +48,21 @@ class Shift:
             return False
         return True
 
+    def unfilled_count(self) -> int:
+        """Total number of unfilled positions for this shift."""
+        return sum(self.required_groups.values()) - len(self.assigned)
+
 class Scheduler:
     def __init__(self, volunteers: Dict[str, Volunteer], shifts: Dict[str, Shift]):
         self.volunteers = volunteers
         self.shifts = shifts
         self._assign_map: Dict[str, List[Tuple[str, datetime, datetime]]] = {vid: [] for vid in volunteers}
+
+        # Pre-index volunteers by group
+        self.volunteers_by_group: Dict[Optional[str], List[Volunteer]] = {}
+        for v in volunteers.values():
+            self.volunteers_by_group.setdefault(v.group, []).append(v)
+
         for s in self.shifts.values():
             setattr(s, "_scheduler_shift_times_for_volunteer", self._scheduler_shift_times_for_volunteer)
 
@@ -64,6 +75,9 @@ class Scheduler:
                 return True
         return False
 
+    # --------------------
+    # Simple greedy assign (backward-compatible)
+    # --------------------
     def assign(self):
         unfilled_shifts = []
 
@@ -93,6 +107,92 @@ class Scheduler:
             "volunteers": {vid: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for vid, v in self.volunteers.items()},
         }
 
+    # --------------------
+    # Backtracking solver
+    # --------------------
+    def assign_optimal(self, timeout: float = 5.0):
+        """Attempt to assign all shifts optimally with backtracking and scoring weights."""
+        slots = []  # List of (shift_id, group)
+        for shift in sorted(self.shifts.values(), key=lambda s: -sum(s.required_groups.values())):  # hardest first
+            for group, count in shift.required_groups.items():
+                for _ in range(count):
+                    slots.append((shift.id, group))
+
+        best_solution = {"score": -1, "assignments": {}}
+        start_time = time.time()
+
+        def score_solution():
+            """Simple scoring: fewer unfilled shifts + balanced volunteer hours"""
+            filled = sum(len(s.assigned) for s in self.shifts.values())
+            total_hours = sum(v.assigned_hours for v in self.volunteers.values())
+            return filled + 0.01 * total_hours  # slight weight for balanced hours
+
+        def backtrack(i):
+            if time.time() - start_time > timeout:
+                return  # stop after timeout
+
+            if i >= len(slots):
+                s = score_solution()
+                if s > best_solution["score"]:
+                    best_solution["score"] = s
+                    best_solution["assignments"] = {sid: list(s.assigned) for sid, s in self.shifts.items()}
+                return
+
+            shift_id, group = slots[i]
+            shift = self.shifts[shift_id]
+            candidates = [v for v in self.volunteers_by_group.get(group, [])
+                          if shift.allows(v)
+                          and not self._would_overlap(v, shift)
+                          and shift.id not in v.assigned_shifts
+                          and v.assigned_hours + shift.duration_hours() <= v.max_hours + 1e-9]
+
+            # sort candidates by least hours, least shifts
+            candidates.sort(key=lambda x: (x.assigned_hours, len(x.assigned_shifts), -x.max_hours))
+
+            if not candidates:
+                backtrack(i + 1)  # skip if no candidate
+                return
+
+            for v in candidates:
+                # assign
+                v.assigned_hours += shift.duration_hours()
+                v.assigned_shifts.append(shift.id)
+                shift.assigned.append(v.id)
+                self._assign_map[v.id].append((shift.id, shift.start, shift.end))
+
+                backtrack(i + 1)
+
+                # undo
+                v.assigned_hours -= shift.duration_hours()
+                v.assigned_shifts.pop()
+                shift.assigned.pop()
+                self._assign_map[v.id].pop()
+
+        backtrack(0)
+
+        # Apply best found
+        for sid, assigned in best_solution["assignments"].items():
+            self.shifts[sid].assigned = assigned
+        for v in self.volunteers.values():
+            v.assigned_shifts = [s.id for s in self.shifts.values() if v.id in s.assigned]
+            v.assigned_hours = sum(self.shifts[sid].duration_hours() for sid in v.assigned_shifts)
+
+        unfilled = []
+        for s in self.shifts.values():
+            for g, c in s.required_groups.items():
+                assigned_count = sum(1 for vid in s.assigned if self.volunteers[vid].group == g)
+                if assigned_count < c:
+                    unfilled.append((s.id, g, c - assigned_count))
+
+        return {
+            "assigned_shifts": {sid: s.assigned for sid, s in self.shifts.items()},
+            "unfilled_shifts": unfilled,
+            "volunteers": {vid: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for vid, v in self.volunteers.items()},
+        }
+
+    # --------------------
+    # Reporting & CSV export
+    # --------------------
     def report(self):
         group_totals: Dict[Optional[str], float] = {}
         for v in self.volunteers.values():
