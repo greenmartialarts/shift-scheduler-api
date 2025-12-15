@@ -296,7 +296,7 @@ class Scheduler:
     def assign_cp_sat_chunked(self, chunk_size: int = 5, timeout_per_chunk: float = 5.0):
         """
         Memory-efficient CP-SAT assignment in chunks.
-        Prevents double booking by respecting existing assignments.
+        Prevents double booking both across and within chunks.
         """
         # Sort shifts: largest requirement first, then start time
         shifts_sorted = sorted(self.shifts.values(), key=lambda s: (-sum(s.required_groups.values()), s.start))
@@ -308,29 +308,70 @@ class Scheduler:
             print(f"Solving chunk {chunk_idx}/{len(chunks)} ({len(chunk)} shifts)")
 
             # Temporary CP-SAT scheduler for this chunk
-            chunk_shifts = {s.id: s for s in chunk}
-            temp_scheduler = Scheduler(self.volunteers, chunk_shifts)
+            temp_scheduler = Scheduler(self.volunteers, {s.id: s for s in chunk})
 
-            # Pre-fill overlaps to prevent double-booking
-            for v in self.volunteers.values():
-                for sid in v.assigned_shifts:
-                    if sid in chunk_shifts:
-                        continue
-                    # Block overlaps from previous assignments
-                    shift = self.shifts[sid]
-                    temp_scheduler._assign_map[v.id].append((shift.id, shift.start, shift.end))
+            model = cp_model.CpModel()
+            x = {}  # variables: x[(vol_id, shift_id)] = 1 if volunteer assigned
 
-            # Solve chunk with CP-SAT
-            result = temp_scheduler.assign_cp_sat(timeout=timeout_per_chunk)
+            # 1. Create variables for allowed assignments
+            for v in temp_scheduler.volunteers.values():
+                for s in chunk:
+                    if s.allows(v) and v.group in s.required_groups:
+                        x[(v.id, s.id)] = model.NewBoolVar(f"x_{v.id}_{s.id}")
 
-            # Merge results back to main scheduler
+            # 2. Shift coverage constraints
             for s in chunk:
-                self.shifts[s.id].assigned = s.assigned
-                for vid in s.assigned:
-                    v = self.volunteers[vid]
-                    if s.id not in v.assigned_shifts:
-                        v.assigned_shifts.append(s.id)
-                        v.assigned_hours += s.duration_hours()
+                for g, count in s.required_groups.items():
+                    candidates = [v for v in temp_scheduler.volunteers.values() if v.group == g and (v.id, s.id) in x]
+                    if candidates:
+                        model.Add(sum(x[(v.id, s.id)] for v in candidates) <= count)
+
+            # 3. Volunteer max hours constraints
+            for v in temp_scheduler.volunteers.values():
+                model.Add(
+                    sum(int(s.duration_hours() * 100) * x[(v.id, s.id)] for s in chunk if (v.id, s.id) in x)
+                    <= int(v.max_hours * 100)
+                )
+
+            # 4. Prevent overlapping shifts inside chunk
+            for v in temp_scheduler.volunteers.values():
+                for i, s1 in enumerate(chunk):
+                    for j, s2 in enumerate(chunk):
+                        if i >= j:
+                            continue
+                        if (v.id, s1.id) in x and (v.id, s2.id) in x and overlap(s1.start, s1.end, s2.start, s2.end):
+                            model.AddBoolOr([x[(v.id, s1.id)].Not(), x[(v.id, s2.id)].Not()])
+
+            # 5. Prevent overlaps with previously assigned shifts
+            for v in temp_scheduler.volunteers.values():
+                for sid, s_start, s_end in self._assign_map.get(v.id, []):
+                    for s in chunk:
+                        if overlap(s_start, s_end, s.start, s.end) and (v.id, s.id) in x:
+                            model.Add(x[(v.id, s.id)] == 0)
+
+            # 6. Objective: maximize assigned shifts
+            model.Maximize(sum(var for var in x.values()))
+
+            # Solve chunk
+            solver = cp_model.CpSolver()
+            solver.parameters.max_time_in_seconds = timeout_per_chunk
+            status = solver.Solve(model)
+
+            # Apply solution
+            for s in chunk:
+                s.assigned.clear()
+            for v in temp_scheduler.volunteers.values():
+                v.assigned_shifts = [sid for sid in v.assigned_shifts if sid not in temp_scheduler.shifts]
+                v.assigned_hours = sum(self.shifts[sid].duration_hours() for sid in v.assigned_shifts)
+
+            for (v_id, s_id), var in x.items():
+                if solver.Value(var):
+                    self.shifts[s_id].assigned.append(v_id)
+                    v = self.volunteers[v_id]
+                    if s_id not in v.assigned_shifts:
+                        v.assigned_shifts.append(s_id)
+                        v.assigned_hours += self.shifts[s_id].duration_hours()
+                        self._assign_map[v.id].append((s_id, self.shifts[s_id].start, self.shifts[s_id].end))
 
         # Collect unfilled shifts
         unfilled = []
