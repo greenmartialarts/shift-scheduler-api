@@ -33,15 +33,45 @@ git push -u origin main
 
 ## Step 3: Configure Persistent Database
 
-**CRITICAL:** Add a volume so your database survives deployments.
+Railway provides persistent storage through volumes. Here's how to set it up:
 
-1. Once deployed, click on your service in the Railway dashboard
-2. Go to **"Settings"** tab
-3. Scroll to **"Volumes"** section
-4. Click **"New Volume"**
-5. Configure:
-   - **Mount Path:** `/data`
-   - Click **"Add"**
+### Finding Volumes in Railway
+
+1. Once deployed, click on your **service** (the box with your app name)
+2. Look for the **"Data"** or **"Storage"** tab in the left sidebar
+3. If you don't see "Volumes", try these alternatives:
+
+**Option A: Railway Volumes (Recommended)**
+
+If available on your plan:
+1. Click **"Volumes"** in the service menu
+2. Click **"New Volume"** or **"+ Volume"**
+3. Set **Mount Path:** `/data`
+4. Click **"Add"** or **"Deploy"**
+
+**Option B: Use PostgreSQL for Persistence (Alternative)**
+
+If volumes aren't available, you can use Railway's free PostgreSQL for storing the database:
+
+1. In your project, click **"+ New"** → **"Database"** → **"Add PostgreSQL"**
+2. Railway will provision a Postgres database
+3. Add this environment variable to your service:
+   ```
+   USE_POSTGRES=true
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   ```
+4. Your app will automatically use Postgres instead of SQLite
+
+**Option C: Local SQLite (Testing Only)**
+
+For testing only (database will reset on redeploy):
+- Skip this step
+- Database will be stored in the container (non-persistent)
+- Good for testing, but you'll lose data on each deploy
+
+### ⚠️ Important Note
+
+If you can't find Volumes, you're likely on Railway's Hobby plan where volumes may require additional setup or billing. The PostgreSQL option (B) works on all plans and is actually more robust for production use!
 
 ## Step 4: Set Environment Variables
 
