@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduler API - Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </div>
+                <h1>Admin Dashboard</h1>
+                <p class="subtitle">Scheduler API Key Management</p>
+
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" autocomplete="username" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" autocomplete="current-password" required>
+                    </div>
+
+                    <div id="loginError" class="error-message"></div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span>Sign In</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboardScreen" class="screen">
+        <nav class="navbar">
+            <div class="nav-content">
+                <div class="nav-brand">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <span>Scheduler API</span>
+                </div>
+                <button id="logoutBtn" class="btn btn-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </nav>
+
+        <main class="container">
+            <header class="dashboard-header">
+                <h1>API Key Management</h1>
+                <button id="createKeyBtn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                    <span>Generate New Key</span>
+                </button>
+            </header>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                            </path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalKeys">0</div>
+                        <div class="stat-label">Active API Keys</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="keys-section">
+                <div class="section-header">
+                    <h2>Active Keys</h2>
+                    <input type="text" id="searchKeys" class="search-input" placeholder="Search keys...">
+                </div>
+
+                <div class="table-container">
+                    <table class="keys-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Key Preview</th>
+                                <th>Rate Limit</th>
+                                <th>Created</th>
+                                <th>Last Used</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keysTableBody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create Key Modal -->
+    <div id="createKeyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Generate New API Key</h2>
+                <button class="close-btn" onclick="closeCreateKeyModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <form id="createKeyForm">
+                <div class="form-group">
+                    <label for="keyName">Key Name</label>
+                    <input type="text" id="keyName" name="keyName" placeholder="e.g., Production Key" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="rateLimit">Daily Rate Limit</label>
+                    <input type="number" id="rateLimit" name="rateLimit" value="10000" min="1" required>
+                    <small>Maximum API requests per day for this key</small>
+                </div>
+
+                <div id="createKeyError" class="error-message"></div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateKeyModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Generate Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Key Generated Modal -->
+    <div id="keyGeneratedModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>API Key Generated</h2>
+            </div>
+
+            <div class="success-message">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <p>Your API key has been generated successfully!</p>
+            </div>
+
+            <div class="key-display">
+                <label>API Key (copy this now - it won't be shown again)</label>
+                <div class="key-value">
+                    <code id="generatedKey"></code>
+                    <button class="copy-btn" onclick="copyGeneratedKey(event)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="closeKeyGeneratedModal()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Rate Limit Modal -->
+    <div id="editLimitModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Rate Limit</h2>
+                <button class="close-btn" onclick="closeEditLimitModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <form id="editLimitForm">
+                <input type="hidden" id="editKeyId">
+                <div class="form-group">
+                    <label for="newRateLimit">Daily Rate Limit</label>
+                    <input type="number" id="newRateLimit" name="newRateLimit" min="1" required>
+                </div>
+
+                <div id="editLimitError" class="error-message"></div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditLimitModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteConfirmModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Confirm Deletion</h2>
+                <button class="close-btn" onclick="closeDeleteConfirmModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div style="margin: 1.5rem 0;">
+                <p style="color: var(--text-secondary); font-size: 1.125rem;">Are you sure you want to revoke the API
+                    key:</p>
+                <p style="margin-top: 0.5rem; font-weight: 600; color: var(--text-primary); font-size: 1.25rem;"
+                    id="deleteKeyName"></p>
+                <p style="margin-top: 1rem; color: var(--error); font-size: 0.875rem;">⚠️ This action cannot be undone.
+                </p>
+            </div>
+
+            <input type="hidden" id="deleteKeyId">
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteConfirmModal()">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteKey()">Revoke Key</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

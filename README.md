@@ -60,6 +60,84 @@ curl -X POST "http://localhost:8000/schedule/csv?strategy=minimize_overtime" \
 ## Try the API Here :
 https://shift-scheduler-api-production.up.railway.app/docs
 
+## 🔐 API Key Authentication
+
+**All scheduler endpoints now require API key authentication for security and rate limiting.**
+
+### Initial Setup
+
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Create Master Admin Account**
+   ```bash
+   python setup_admin.py
+   ```
+   This will prompt you to create a username and password for the admin dashboard.
+
+3. **Start the Server**
+   ```bash
+   uvicorn api_scheduler:app --reload
+   ```
+
+4. **Access Admin Dashboard**
+   - Navigate to: `http://localhost:8000/admin`
+   - Login with your credentials
+   - Generate your first API key
+
+### Using the Admin Dashboard
+
+The admin dashboard provides a modern web interface for managing API keys:
+
+- **Generate API Keys**: Create new keys with custom names and rate limits
+- **View All Keys**: See all active keys and their usage
+- **Update Rate Limits**: Adjust the daily request limit for any key (default: 10,000/day)
+- **Revoke Keys**: Instantly disable compromised or unused keys
+- **Monitor Usage**: Track request counts per key
+
+### Making Authenticated API Requests
+
+Include your API key in the `Authorization` header:
+
+```bash
+curl -X POST "http://localhost:8000/schedule/json" \
+  -H "Authorization: Bearer sk_YOUR_API_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -d @schedule_request.json
+```
+
+**Python Example:**
+```python
+import requests
+
+headers = {
+    'Authorization': 'Bearer sk_YOUR_API_KEY_HERE',
+    'Content-Type': 'application/json'
+}
+
+response = requests.post(
+    'http://localhost:8000/schedule/json',
+    headers=headers,
+    json=your_schedule_data
+)
+```
+
+### Rate Limiting
+
+Each API key has a configurable daily rate limit (default: 10,000 requests/day). When exceeded, you'll receive a `429 Too Many Requests` response:
+
+```json
+{
+  "detail": "Rate limit exceeded. Current: 10000/10000 requests today."
+}
+```
+
+Rate limits reset at midnight UTC daily.
+
+
+
 ## Installation
 
 ### Prerequisites

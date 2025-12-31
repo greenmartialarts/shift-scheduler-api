@@ -6,7 +6,15 @@ from typing import List, Optional, Dict, Set, Tuple
 import csv
 import io
 import time
-from ortools.sat.python import cp_model
+
+# Make ortools optional for compatibility
+try:
+    from ortools.sat.python import cp_model
+    HAS_ORTOOLS = True
+except ImportError:
+    HAS_ORTOOLS = False
+    print("Warning: ortools not available. CP-SAT solver will not work.")
+
 
 ISO_FMT = "%Y-%m-%dT%H:%M"
 

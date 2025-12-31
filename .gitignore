@@ -15,3 +15,6 @@ __pycache__/
 
 # OS-specific files
 .DS_Store
+
+# API Keys Database
+api_keys.db
