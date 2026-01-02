@@ -11,7 +11,7 @@ COPY . .
 
 # Expose port (Railway will override with $PORT env var)
 EXPOSE 8080
-RUN python railway_setup.py
+RUN python setup_admin.py
 
 # Run the application with shell to expand environment variables
 CMD ["sh", "-c", "uvicorn api_scheduler:app --host 0.0.0.0 --port ${PORT:-8080}"]
