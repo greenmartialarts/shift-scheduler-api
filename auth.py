@@ -11,8 +11,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import contextmanager
 
 # Configuration
-# Use Railway volume if available, otherwise local path
-DB_PATH = os.path.join(os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "."), "api_keys.db")
+# Use DATA_PATH for persistence if available, otherwise local path
+DB_PATH = os.path.join(os.getenv("DATA_PATH", "."), "api_keys.db")
 JWT_SECRET = secrets.token_urlsafe(32)  # Generate on startup
 JWT_ALGORITHM = "HS256"
 DEFAULT_RATE_LIMIT = 10000

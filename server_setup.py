@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# railway_setup.py
+# server_setup.py
 """
-Automated setup script for Railway deployment.
-Creates admin account from environment variables.
+Automated setup script for server deployment.
+Initializes the database and creates a default admin account from environment variables.
 """
 import os
 from auth import create_master_user, init_database
 
 def main():
     # Initialize database
+    print("Initializing database...")
     init_database()
     print("✓ Database initialized")
     

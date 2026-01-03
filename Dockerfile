@@ -12,8 +12,8 @@ COPY . .
 # Make start script executable
 RUN chmod +x start.sh
 
-# Expose port (Railway will override with $PORT env var)
-EXPOSE 8080
+# Expose port (Override with $PORT env var)
+EXPOSE 8000
 
 # Run the setup and start the application
 CMD ["./start.sh"]
