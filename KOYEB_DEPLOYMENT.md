@@ -1,10 +1,11 @@
-# Koyeb Deployment Guide
+# Koyeb Deployment Guide (Free Tier + Supabase)
 
-This guide shows how to deploy the Scheduler API to Koyeb with a persistent database using Docker.
+This guide shows how to deploy the Scheduler API to Koyeb's **Free Tier** using **Supabase** for persistent storage.
 
 ## Prerequisites
 
-- Koyeb account (sign up at [koyeb.com](https://www.koyeb.com))
+- Koyeb account (Free Tier)
+- Supabase account (Free Project)
 - GitHub account with your repository pushed
 
 ## Step 1: Push to GitHub
@@ -13,25 +14,31 @@ Ensure your latest changes are pushed to GitHub:
 
 ```bash
 git add .
-git commit -m "Migration to platform-agnostic setup for Koyeb"
+git commit -m "Support Supabase for free persistence on Koyeb"
 git push origin main
 ```
 
-## Step 2: Deploy to Koyeb
+## Step 2: Get your Supabase Connection String
 
-1. Go to your [Koyeb Dashboard](https://app.koyeb.com) and click **"Create Service"**.
-2. Select **"GitHub"** as the deployment method.
-3. Select your repository and the **"main"** branch.
-4. Koyeb will automatically detect the `Dockerfile`.
+1. Go to your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Select your project (**SchedulerDB-Production** or similar).
+3. Go to **Project Settings** > **Database**.
+4. Find the **Connection string** section, select **URI**, and copy it.
+   - It should looks like: `postgresql://postgres.[YOUR-ID]:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres`
+   - **Important:** Make sure to replace `[YOUR-PASSWORD]` with your actual Supabase database password.
 
-## Step 3: Configure Persistent Storage
+## Step 3: Create Koyeb Service (Free Tier)
 
-Koyeb supports persistent storage via Volumes.
-
-1. In the service configuration, find the **"Storage"** section.
-2. Click **"Add Volume"**.
-3. Set **Mount Path:** `/data` (this will match our `DATA_PATH` configuration).
-4. Select a size (e.g., 1GB is more than enough for SQLite).
+1. Go to [Koyeb Dashboard](https://app.koyeb.com) and click **"Create Service"**.
+2. Select **"GitHub"** and your repository.
+3. **Build Options**:
+   - Select **Dockerfile**.
+   - Keep all defaults (no overrides needed).
+4. **Instance**:
+   - Select **CPU Eco** > **Free**.
+   - Choose a region (e.g., Frankfurt or Washington, D.C.).
+5. **Storage**:
+   - **DO NOT** add a Volume (Volumes are not supported on the Free tier).
 
 ## Step 4: Set Environment Variables
 
@@ -39,39 +46,20 @@ In the **"Environment Variables"** section, add the following:
 
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `DATA_PATH` | `/data` | Path to the persistent volume mount |
+| `DATABASE_URL` | `postgresql://...` | Your Supabase URI (from Step 2) |
 | `ADMIN_USERNAME` | `your_admin` | (Optional) Desired admin username |
 | `ADMIN_PASSWORD` | `your_pass` | (Optional) Desired admin password |
-| `PORT` | `8000` | Koyeb sets this, but ensure it matches our EXPOSE 8000 |
 
-> [!NOTE]
-> If you don't set `ADMIN_USERNAME` and `ADMIN_PASSWORD`, the defaults will be `admin` / `admin123`. **Change these immediately after deployment!**
+> [!IMPORTANT]
+> The `DATABASE_URL` is what tells the application to use Supabase instead of a local SQLite file. This ensures your data survives redeployments on the Free tier.
 
-## Step 5: Finish and Deploy
+## Step 5: Deploy
 
 1. Click **"Deploy"**.
-2. Koyeb will build the Docker image and start the service.
-3. Once the service is healthy, you'll receive a public URL (e.g., `https://your-service-name.koyeb.app`).
+2. Once the service is healthy, access your admin dashboard at:
+   `https://[your-service-name].koyeb.app/admin`
 
-## Accessing Your App
+## Troubleshooting
 
-- **Admin Dashboard:** `https://your-service-name.koyeb.app/admin`
-- **API Endpoints:** `https://your-service-name.koyeb.app/schedule/json` (etc.)
-
-## Local Verification
-
-Before pushing, you can verify the setup locally:
-
-```bash
-# Set environment variables for testing
-export DATA_PATH=./test_data
-export ADMIN_USERNAME=test_admin
-export ADMIN_PASSWORD=test_pass
-
-# Run setup
-mkdir -p ./test_data
-python server_setup.py
-
-# Start server
-uvicorn api_scheduler:app --host 0.0.0.0 --port 8000
-```
+- **Database Errors**: Check your `DATABASE_URL`. Ensure the password is correct and there are no special characters that might need encoding.
+- **Login fails**: Check Koyeb logs to see if the admin account was created successfully on the first run.

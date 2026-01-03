@@ -1,5 +1,6 @@
-# auth.py
 import sqlite3
+import psycopg2
+from psycopg2 import extras
 import secrets
 import bcrypt
 import jwt
@@ -11,7 +12,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import contextmanager
 
 # Configuration
-# Use DATA_PATH for persistence if available, otherwise local path
+DATABASE_URL = os.getenv("DATABASE_URL")
+# Use DATA_PATH for SQLite persistence if available, otherwise local path
 DB_PATH = os.path.join(os.getenv("DATA_PATH", "."), "api_keys.db")
 JWT_SECRET = secrets.token_urlsafe(32)  # Generate on startup
 JWT_ALGORITHM = "HS256"
@@ -22,56 +24,107 @@ security = HTTPBearer()
 # Database connection context manager
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    if DATABASE_URL:
+        # PostgreSQL (Supabase)
+        conn = psycopg2.connect(DATABASE_URL)
+        # Configure to return dict-like rows
+        cursor_factory = extras.RealDictCursor
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    else:
+        # SQLite (Local/Development)
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+def get_cursor(conn):
+    if DATABASE_URL:
+        return conn.cursor(cursor_factory=extras.RealDictCursor)
+    else:
+        return conn.cursor()
 
 # Initialize database schema
 def init_database():
     """Create database tables if they don't exist."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         
-        # API Keys table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                rate_limit INTEGER DEFAULT 10000,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_used TIMESTAMP
-            )
-        """)
+        # Determine appropriate auto-increment and serial based on DB type
+        id_type = "SERIAL" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        primary_key_sqlite = "" if DATABASE_URL else "" # Handled in id_type
         
-        # API Usage tracking table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key_id INTEGER NOT NULL,
-                date TEXT NOT NULL,
-                request_count INTEGER DEFAULT 0,
-                FOREIGN KEY (key_id) REFERENCES api_keys(id),
-                UNIQUE(key_id, date)
-            )
-        """)
-        
-        # Master users table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS master_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        if DATABASE_URL:
+            # PostgreSQL schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id SERIAL PRIMARY KEY,
+                    key TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    rate_limit INTEGER DEFAULT 10000,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_used TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_usage (
+                    id SERIAL PRIMARY KEY,
+                    key_id INTEGER NOT NULL REFERENCES api_keys(id),
+                    date TEXT NOT NULL,
+                    request_count INTEGER DEFAULT 0,
+                    UNIQUE(key_id, date)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS master_users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            # SQLite schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    rate_limit INTEGER DEFAULT 10000,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_used TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    request_count INTEGER DEFAULT 0,
+                    FOREIGN KEY (key_id) REFERENCES api_keys(id),
+                    UNIQUE(key_id, date)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS master_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
 # API Key Management
 def generate_api_key() -> str:
@@ -82,7 +135,7 @@ def create_api_key(name: str, rate_limit: int = DEFAULT_RATE_LIMIT) -> Dict:
     """Create a new API key in the database."""
     key = generate_api_key()
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute(
             "INSERT INTO api_keys (key, name, rate_limit) VALUES (?, ?, ?)",
             (key, name, rate_limit)
@@ -99,7 +152,7 @@ def create_api_key(name: str, rate_limit: int = DEFAULT_RATE_LIMIT) -> Dict:
 def get_all_api_keys() -> list:
     """Retrieve all API keys (without exposing full key)."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute("""
             SELECT id, SUBSTR(key, 1, 10) || '...' as key_preview, name, 
                    rate_limit, created_at, last_used
@@ -111,7 +164,7 @@ def get_all_api_keys() -> list:
 def get_api_key_by_id(key_id: int) -> Optional[Dict]:
     """Get API key details by ID."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -119,7 +172,7 @@ def get_api_key_by_id(key_id: int) -> Optional[Dict]:
 def update_api_key_rate_limit(key_id: int, rate_limit: int) -> bool:
     """Update the rate limit for an API key."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute(
             "UPDATE api_keys SET rate_limit = ? WHERE id = ?",
             (rate_limit, key_id)
@@ -129,7 +182,7 @@ def update_api_key_rate_limit(key_id: int, rate_limit: int) -> bool:
 def delete_api_key(key_id: int) -> bool:
     """Delete/revoke an API key."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         # Delete usage records first (foreign key constraint)
         cursor.execute("DELETE FROM api_usage WHERE key_id = ?", (key_id,))
         cursor.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
@@ -138,7 +191,7 @@ def delete_api_key(key_id: int) -> bool:
 def get_api_key_usage(key_id: int, days: int = 30) -> list:
     """Get usage statistics for an API key over the last N days."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute("""
             SELECT date, request_count
             FROM api_usage
@@ -157,7 +210,7 @@ def check_rate_limit(api_key: str) -> tuple[bool, int, int]:
     today = date.today().isoformat()
     
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         
         # Get key info
         cursor.execute("SELECT id, rate_limit FROM api_keys WHERE key = ?", (api_key,))
@@ -226,7 +279,7 @@ def create_master_user(username: str, password: str) -> bool:
 def verify_master_user(username: str, password: str) -> bool:
     """Verify master user credentials."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute(
             "SELECT password_hash FROM master_users WHERE username = ?",
             (username,)
