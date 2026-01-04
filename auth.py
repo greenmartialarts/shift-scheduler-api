@@ -82,24 +82,6 @@ def get_db():
         # Sanitize input if using URL
         clean_url = DATABASE_URL.strip().replace('\r', '').replace('\n', '') if DATABASE_URL else None
         
-        # FULL MASKED ENV AUDIT
-        def mask_val(key, val):
-            if not val: return "None"
-            val = str(val).strip()
-            if any(secret_key in key.upper() for secret_key in ['PASSWORD', 'SECRET', 'KEY', 'URL', 'TOKEN']):
-                if len(val) < 8: return f"**** (len={len(val)})"
-                return f"{val[:3]}...{val[-3:]} (len={len(val)})"
-            return f"'{val}' (len={len(val)})"
-
-        sys.stderr.write("=== FULL ENVIRONMENT AUDIT (MASKED) ===\n")
-        # Sort keys to make logs readable
-        for k in sorted(os.environ.keys()):
-            # Only focus on relevant variables to avoid cluttering logs with system vars
-            if any(x in k.upper() for x in ['SUPABASE', 'POSTGRES', 'DATABASE', 'DB_', 'ADMIN_', 'DATA_']):
-                sys.stderr.write(f"ENV: {k} = {mask_val(k, os.environ[k])}\n")
-        sys.stderr.write(f"DIAGNOSTIC: Detected PROJECT_ID: {PROJECT_ID}\n")
-        sys.stderr.write("=======================================\n")
-
         try:
             if clean_url:
                 url = urlparse(clean_url)
@@ -119,7 +101,6 @@ def get_db():
             # If host is a pooler and user doesn't have a dot, we MUST add the project ID suffix
             is_pooler = host and ('pooler.supabase.com' in host or port == 6543)
             if is_pooler and user and '.' not in user and PROJECT_ID:
-                sys.stderr.write(f"DIAGNOSTIC: Applying pooler suffix to user '{user}' -> '{user}.{PROJECT_ID}'\n")
                 user = f"{user}.{PROJECT_ID}"
             
             # Final sanity check: strip whitespace from every individual component
@@ -127,8 +108,6 @@ def get_db():
             password = password.strip() if password else password
             host = host.strip() if host else host
             dbname = dbname.strip() if dbname else dbname
-
-            sys.stderr.write(f"DIAGNOSTIC: Final Connection Params -> Host: {host}, Port: {port}, User: {user}, DB: {dbname}\n")
             
             conn = psycopg2.connect(
                 dbname=dbname,

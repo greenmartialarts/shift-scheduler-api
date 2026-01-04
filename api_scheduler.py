@@ -92,9 +92,14 @@ def generate_key(request: CreateKeyRequest, username: str = Depends(verify_admin
     return result
 
 @app.get("/")
-async def root_redirect():
-    """Redirect root to admin interface."""
-    return RedirectResponse(url="/admin")
+async def root():
+    """Returns API information."""
+    return {
+        "name": "Volunteer Scheduler API",
+        "version": "2.0.0",
+        "admin_interface": "/admin",
+        "documentation": "/docs"
+    }
 
 @app.get("/admin/keys")
 def list_keys(username: str = Depends(verify_admin_token)):
