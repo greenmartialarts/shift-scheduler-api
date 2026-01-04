@@ -52,7 +52,7 @@ The primary endpoint for scheduling is `POST /schedule/json`.
 ## 4. Implementation Example (JavaScript)
 
 ```javascript
-const API_URL = "https://your-scheduler-instance.vercel.app/schedule/json";
+const API_URL = "https://shift-scheduler-api-xi.vercel.app/schedule/json";
 const API_KEY = "YOUR_API_KEY_HERE";
 
 async function generateSchedule(data) {
@@ -84,7 +84,7 @@ async function generateSchedule(data) {
 
 ### Request (cURL)
 ```bash
-curl -X POST https://your-scheduler.vercel.app/schedule/json \
+curl -X POST https://shift-scheduler-api-xi.vercel.app/schedule/json \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
