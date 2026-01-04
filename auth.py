@@ -17,13 +17,14 @@ import sys
 
 # Configuration
 # Support both manual DATABASE_URL and official Vercel/Supabase integration variables
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("POSTGRES_URL_NON_POOLING")
+# We prioritize NON_POOLING for stability if available
+DATABASE_URL = os.getenv("POSTGRES_URL_NON_POOLING") or os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
 
 # Component variables from official integration
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DB_HOST = os.getenv("POSTGRES_HOST")
-DB_PORT = os.getenv("POSTGRES_PORT", "6543")  # Default to Supabase pooler port
+DB_PORT = os.getenv("POSTGRES_PORT") or "5432"  # Default to direct port
 DB_NAME = os.getenv("POSTGRES_DATABASE", "postgres")
 
 # Use DATA_PATH for SQLite persistence if available, otherwise local path
@@ -81,10 +82,23 @@ def get_db():
         # Sanitize input if using URL
         clean_url = DATABASE_URL.strip().replace('\r', '').replace('\n', '') if DATABASE_URL else None
         
-        # Diagnostic: Print available environment variable names (not values for security)
-        relevant_vars = [k for k in os.environ.keys() if 'SUPABASE' in k or 'POSTGRES' in k or 'DATABASE' in k]
-        sys.stderr.write(f"DIAGNOSTIC: Env keys found: {', '.join(relevant_vars)}\n")
+        # FULL MASKED ENV AUDIT
+        def mask_val(key, val):
+            if not val: return "None"
+            val = str(val).strip()
+            if any(secret_key in key.upper() for secret_key in ['PASSWORD', 'SECRET', 'KEY', 'URL', 'TOKEN']):
+                if len(val) < 8: return f"**** (len={len(val)})"
+                return f"{val[:3]}...{val[-3:]} (len={len(val)})"
+            return f"'{val}' (len={len(val)})"
+
+        sys.stderr.write("=== FULL ENVIRONMENT AUDIT (MASKED) ===\n")
+        # Sort keys to make logs readable
+        for k in sorted(os.environ.keys()):
+            # Only focus on relevant variables to avoid cluttering logs with system vars
+            if any(x in k.upper() for x in ['SUPABASE', 'POSTGRES', 'DATABASE', 'DB_', 'ADMIN_', 'DATA_']):
+                sys.stderr.write(f"ENV: {k} = {mask_val(k, os.environ[k])}\n")
         sys.stderr.write(f"DIAGNOSTIC: Detected PROJECT_ID: {PROJECT_ID}\n")
+        sys.stderr.write("=======================================\n")
 
         try:
             if clean_url:
@@ -105,12 +119,16 @@ def get_db():
             # If host is a pooler and user doesn't have a dot, we MUST add the project ID suffix
             is_pooler = host and ('pooler.supabase.com' in host or port == 6543)
             if is_pooler and user and '.' not in user and PROJECT_ID:
-                sys.stderr.write(f"DIAGNOSTIC: Suffixing pooler user '{user}' with '.{PROJECT_ID}'\n")
+                sys.stderr.write(f"DIAGNOSTIC: Applying pooler suffix to user '{user}' -> '{user}.{PROJECT_ID}'\n")
                 user = f"{user}.{PROJECT_ID}"
-            elif is_pooler and user and '.' not in user and not PROJECT_ID:
-                sys.stderr.write(f"WARNING: Pooler detected but PROJECT_ID missing! Authentication will likely fail.\n")
+            
+            # Final sanity check: strip whitespace from every individual component
+            user = user.strip() if user else user
+            password = password.strip() if password else password
+            host = host.strip() if host else host
+            dbname = dbname.strip() if dbname else dbname
 
-            sys.stderr.write(f"DIAGNOSTIC: Attempting connect to {host}:{port} as {user} (db={dbname})\n")
+            sys.stderr.write(f"DIAGNOSTIC: Final Connection Params -> Host: {host}, Port: {port}, User: {user}, DB: {dbname}\n")
             
             conn = psycopg2.connect(
                 dbname=dbname,
@@ -119,14 +137,14 @@ def get_db():
                 host=host,
                 port=port,
                 sslmode='require',
-                connect_timeout=10
+                connect_timeout=15
             )
         except Exception as e:
             sys.stderr.write(f"DIAGNOSTIC_ERROR: Postgres connect failed for {user}@{host}: {str(e)}\n")
-            # Try a direct connection with the URL if we have one
+            # Try a direct connection with the URL string if it was provided
             if clean_url:
                 try:
-                    sys.stderr.write("DIAGNOSTIC: Final fallback to direct URI string...\n")
+                    sys.stderr.write("DIAGNOSTIC: Final fallback to direct URI string attempt...\n")
                     conn = psycopg2.connect(clean_url)
                 except Exception as e_direct:
                     sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI also failed: {str(e_direct)}\n")
