@@ -275,6 +275,45 @@
         </div>
     </div>
 
+    <!-- Usage Modal -->
+    <div id="usageModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Usage Statistics</h2>
+                    <p class="subtitle" id="usageKeyName" style="margin-bottom: 0;"></p>
+                </div>
+                <button class="close-btn" onclick="closeUsageModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="table-container">
+                <table class="keys-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Requests</th>
+                            <th>Shifts</th>
+                            <th>Volunteers</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usageTableBody">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeUsageModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
 </body>
 

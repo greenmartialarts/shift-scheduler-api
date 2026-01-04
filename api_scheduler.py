@@ -8,7 +8,7 @@ from auth import (
     verify_api_key, verify_admin_token, verify_master_user,
     create_access_token, create_api_key, get_all_api_keys,
     update_api_key_rate_limit, delete_api_key, get_api_key_usage,
-    get_api_key_by_id, ensure_admin_exists
+    get_api_key_by_id, ensure_admin_exists, record_detailed_usage
 )
 import csv, io
 import json
@@ -27,23 +27,14 @@ app = FastAPI(
 # Serve static files for admin interface
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class VolunteerInput(BaseModel):
-    id: str
-    name: str
-    group: Optional[str]
-    max_hours: float
-
-class ShiftInput(BaseModel):
-    id: str
-    start: str
-    end: str
-    required_groups: Dict[str, int]
-    allowed_groups: Optional[List[str]] = None
-    excluded_groups: Optional[List[str]] = None
+class AssignmentInput(BaseModel):
+    shift_id: str
+    volunteer_id: str
 
 class ScheduleInput(BaseModel):
     volunteers: List[VolunteerInput]
-    shifts: List[ShiftInput]
+    unassigned_shifts: List[ShiftInput]
+    current_assignments: List[AssignmentInput] = []
 
 def build_scheduler(vols_input: List[VolunteerInput], shifts_input: List[ShiftInput]) -> Scheduler:
     volunteers = {v.id: Volunteer(**v.dict()) for v in vols_input}
@@ -142,27 +133,32 @@ def get_usage(key_id: int, days: int = 30, username: str = Depends(verify_admin_
 @app.post("/schedule/json")
 def schedule_json(input_data: ScheduleInput, api_key: str = Depends(verify_api_key)):
     try:
-        sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign()
+        # Combine shifts
+        all_shifts = input_data.unassigned_shifts
+        # Note: current_assignments refers to existing shift IDs. 
+        # For simplicity, we assume they exist in the input_data.unassigned_shifts or are fully defined.
+        # The user wants "inputs to current assigned shifts, unassigned shifts, volunteers".
+        # This implies unassigned_shifts are the ones we need to work on.
         
-        # If there are unfilled shifts, return error with partial schedule
-        if result["unfilled_shifts"]:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "Unable to fill all shifts",
-                    "unfilled_shifts": result["unfilled_shifts"],
-                    "assigned_shifts": result["assigned_shifts"],
-                    "volunteers": result["volunteers"]
-                }
-            )
+        sched = build_scheduler(input_data.volunteers, input_data.unassigned_shifts)
+        
+        # Prefill existing assignments
+        prefill_data = [a.dict() for a in input_data.current_assignments]
+        sched.prefill(prefill_data)
+        
+        # Assign the rest with randomization
+        result = sched.assign_simple(shuffle_shifts=True)
+        
+        # Track detailed usage
+        total_volunteers = sum(len(vids) for vids in result["assigned_shifts"].values())
+        total_shifts = sum(1 for vids in result["assigned_shifts"].values() if len(vids) > 0)
+        record_detailed_usage(api_key, total_shifts, total_volunteers)
         
         return {
             "assigned_shifts": result["assigned_shifts"],
-            "unfilled_shifts": result["unfilled_shifts"]
+            "unfilled_shifts": result["unfilled_shifts"],
+            "volunteers": result["volunteers"]
         }
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -170,55 +166,53 @@ def schedule_json(input_data: ScheduleInput, api_key: str = Depends(verify_api_k
 async def schedule_csv(
     volunteers_file: UploadFile = File(...),
     shifts_file: UploadFile = File(...),
+    assignments_file: Optional[UploadFile] = File(None),
     api_key: str = Depends(verify_api_key)
 ):
     try:
-        # Read volunteers CSV
+        # Read volunteers
         v_text = (await volunteers_file.read()).decode()
-        volunteers = {}
-        for row in csv.DictReader(io.StringIO(v_text)):
-            volunteers[row["id"]] = Volunteer(
-                id=row["id"],
-                name=row.get("name", row["id"]),
-                group=row.get("group") or None,
-                max_hours=float(row.get("max_hours", 0))
-            )
+        volunteers = {row["id"]: Volunteer(
+            id=row["id"], name=row.get("name", row["id"]),
+            group=row.get("group") or None,
+            max_hours=float(row.get("max_hours", 0))
+        ) for row in csv.DictReader(io.StringIO(v_text))}
 
-        # Read shifts CSV
+        # Read shifts
         s_text = (await shifts_file.read()).decode()
         shifts = {}
         for row in csv.DictReader(io.StringIO(s_text)):
             required_groups = {}
-            req_str = row.get("required_groups", "")
-            for gpart in req_str.split("|"):
+            for gpart in row.get("required_groups", "").split("|"):
                 if ":" in gpart:
                     g, c = gpart.split(":")
                     required_groups[g.strip()] = int(c.strip())
-            allowed_groups = set(row["allowed_groups"].split("|")) if row.get("allowed_groups") else None
-            excluded_groups = set(row["excluded_groups"].split("|")) if row.get("excluded_groups") else None
             shifts[row["id"]] = Shift(
-                id=row["id"],
-                start=parse_iso(row["start"]),
-                end=parse_iso(row["end"]),
+                id=row["id"], start=parse_iso(row["start"]), end=parse_iso(row["end"]),
                 required_groups=required_groups,
-                allowed_groups=allowed_groups,
-                excluded_groups=excluded_groups
+                allowed_groups=set(row["allowed_groups"].split("|")) if row.get("allowed_groups") else None,
+                excluded_groups=set(row["excluded_groups"].split("|")) if row.get("excluded_groups") else None
             )
 
         sched = Scheduler(volunteers, shifts)
-        result = sched.assign()
 
-        # If there are unfilled shifts, return error with partial schedule
-        if result["unfilled_shifts"]:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "Unable to fill all shifts",
-                    "unfilled_shifts": result["unfilled_shifts"],
-                    "assigned_shifts": result["assigned_shifts"],
-                    "volunteers": result["volunteers"]
-                }
-            )
+        # Read current assignments if provided
+        if assignments_file:
+            a_text = (await assignments_file.read()).decode()
+            prefill_data = list(csv.DictReader(io.StringIO(a_text)))
+            sched.prefill(prefill_data)
+
+        # Standard simple randomized assign
+        result = sched.assign_simple(shuffle_shifts=True)
+
+        # Track detailed usage
+        total_volunteers = 0
+        total_shifts = 0
+        for s in sched.shifts.values():
+            if s.assigned:
+                total_shifts += 1
+                total_volunteers += len(s.assigned)
+        record_detailed_usage(api_key, total_shifts, total_volunteers)
 
         # Export CSV
         out_csv = io.StringIO()
@@ -231,157 +225,7 @@ async def schedule_csv(
         out_csv.seek(0)
         return {"csv": out_csv.getvalue()}
 
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@app.post("/schedule/json_optimal")
-def schedule_json_optimal(
-    input_data: ScheduleInput,
-    timeout: float = 5.0,
-    api_key: str = Depends(verify_api_key)
-):
-    try:
-        sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign_optimal(timeout=timeout)
-        return {
-            "assigned_shifts": result["assigned_shifts"],
-            "unfilled_shifts": result["unfilled_shifts"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/schedule/csv_optimal")
-async def schedule_csv_optimal(
-    volunteers_file: UploadFile = File(...),
-    shifts_file: UploadFile = File(...),
-    timeout: float = 5.0,
-    api_key: str = Depends(verify_api_key)
-):
-    try:
-        # Read volunteers CSV
-        v_text = (await volunteers_file.read()).decode()
-        volunteers = {}
-        for row in csv.DictReader(io.StringIO(v_text)):
-            volunteers[row["id"]] = Volunteer(
-                id=row["id"],
-                name=row.get("name", row["id"]),
-                group=row.get("group") or None,
-                max_hours=float(row.get("max_hours", 0))
-            )
-
-        # Read shifts CSV
-        s_text = (await shifts_file.read()).decode()
-        shifts = {}
-        for row in csv.DictReader(io.StringIO(s_text)):
-            required_groups = {}
-            req_str = row.get("required_groups", "")
-            for gpart in req_str.split("|"):
-                if ":" in gpart:
-                    g, c = gpart.split(":")
-                    required_groups[g.strip()] = int(c.strip())
-            allowed_groups = set(row["allowed_groups"].split("|")) if row.get("allowed_groups") else None
-            excluded_groups = set(row["excluded_groups"].split("|")) if row.get("excluded_groups") else None
-            shifts[row["id"]] = Shift(
-                id=row["id"],
-                start=parse_iso(row["start"]),
-                end=parse_iso(row["end"]),
-                required_groups=required_groups,
-                allowed_groups=allowed_groups,
-                excluded_groups=excluded_groups
-            )
-
-        # Use the new backtracking solver
-        sched = Scheduler(volunteers, shifts)
-        result = sched.assign_optimal(timeout=timeout)
-
-        # Export CSV
-        out_csv = io.StringIO()
-        writer = csv.writer(out_csv)
-        writer.writerow(["shift_id", "volunteer_id", "volunteer_name", "start", "end", "duration_hours"])
-        for s in sched.shifts.values():
-            for vid in s.assigned:
-                v = sched.volunteers[vid]
-                writer.writerow([s.id, v.id, v.name, s.start.isoformat(), s.end.isoformat(), f"{s.duration_hours():.2f}"])
-        out_csv.seek(0)
-        return {"csv": out_csv.getvalue()}
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/schedule/json_cpsat")
-def schedule_json_cpsat(
-    input_data: ScheduleInput,
-    timeout: float = 5.0,
-    api_key: str = Depends(verify_api_key)
-):
-    try:
-        sched = build_scheduler(input_data.volunteers, input_data.shifts)
-        result = sched.assign_cp_sat_chunked(chunk_size=5, timeout_per_chunk=timeout)
-        return {
-            "assigned_shifts": result["assigned_shifts"],
-            "unfilled_shifts": result["unfilled_shifts"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/schedule/csv_cpsat")
-async def schedule_csv_cpsat(
-    volunteers_file: UploadFile = File(...),
-    shifts_file: UploadFile = File(...),
-    timeout: float = 5.0,
-    api_key: str = Depends(verify_api_key)
-):
-    try:
-        # Read volunteers CSV
-        v_text = (await volunteers_file.read()).decode()
-        volunteers = {}
-        for row in csv.DictReader(io.StringIO(v_text)):
-            volunteers[row["id"]] = Volunteer(
-                id=row["id"],
-                name=row.get("name", row["id"]),
-                group=row.get("group") or None,
-                max_hours=float(row.get("max_hours", 0))
-            )
-
-        # Read shifts CSV
-        s_text = (await shifts_file.read()).decode()
-        shifts = {}
-        for row in csv.DictReader(io.StringIO(s_text)):
-            required_groups = {}
-            req_str = row.get("required_groups", "")
-            for gpart in req_str.split("|"):
-                if ":" in gpart:
-                    g, c = gpart.split(":")
-                    required_groups[g.strip()] = int(c.strip())
-            allowed_groups = set(row["allowed_groups"].split("|")) if row.get("allowed_groups") else None
-            excluded_groups = set(row["excluded_groups"].split("|")) if row.get("excluded_groups") else None
-            shifts[row["id"]] = Shift(
-                id=row["id"],
-                start=parse_iso(row["start"]),
-                end=parse_iso(row["end"]),
-                required_groups=required_groups,
-                allowed_groups=allowed_groups,
-                excluded_groups=excluded_groups
-            )
-
-        sched = Scheduler(volunteers, shifts)
-        result = sched.assign_cp_sat_chunked(chunk_size=5, timeout_per_chunk=timeout)
-
-        # Export CSV
-        out_csv = io.StringIO()
-        writer = csv.writer(out_csv)
-        writer.writerow(["shift_id", "volunteer_id", "volunteer_name", "start", "end", "duration_hours"])
-        for s in sched.shifts.values():
-            for vid in s.assigned:
-                v = sched.volunteers[vid]
-                writer.writerow([s.id, v.id, v.name, s.start.isoformat(), s.end.isoformat(), f"{s.duration_hours():.2f}"])
-        out_csv.seek(0)
-        return {"csv": out_csv.getvalue()}
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# Removed legacy optimal and cpsat solvers to minimize memory and CPU usage as requested.

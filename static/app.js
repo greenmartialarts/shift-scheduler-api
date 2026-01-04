@@ -118,6 +118,9 @@ function renderKeys(keys) {
             <td>${key.last_used ? formatDate(key.last_used) : 'Never'}</td>
             <td>
                 <div class="action-buttons">
+                    <button class="btn btn-primary btn-small" onclick="viewUsage(${key.id}, '${escapeHtml(key.name)}')">
+                        Usage
+                    </button>
                     <button class="btn btn-secondary btn-small" onclick="editKeyLimit(${key.id}, ${key.rate_limit})">
                         Edit Limit
                     </button>
@@ -282,6 +285,55 @@ async function confirmDeleteKey() {
     } catch (error) {
         alert(`Error: ${error.message}`);
     }
+}
+
+// Usage Modal
+async function viewUsage(keyId, keyName) {
+    document.getElementById('usageKeyName').textContent = keyName;
+    document.getElementById('usageModal').classList.add('active');
+    document.getElementById('usageTableBody').innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem;">Loading usage data...</td></tr>';
+
+    try {
+        const response = await fetch(`/admin/usage/${keyId}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+
+        if (response.status === 401) {
+            handleLogout();
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error('Failed to load usage data');
+        }
+
+        const data = await response.json();
+        renderUsage(data.usage);
+    } catch (error) {
+        document.getElementById('usageTableBody').innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--error);">${error.message}</td></tr>`;
+    }
+}
+
+function renderUsage(usage) {
+    const tbody = document.getElementById('usageTableBody');
+
+    if (usage.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No usage recorded in the last 30 days.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = usage.map(day => `
+        <tr>
+            <td>${day.date}</td>
+            <td>${day.request_count.toLocaleString()}</td>
+            <td>${day.total_shifts.toLocaleString()}</td>
+            <td>${day.total_volunteers.toLocaleString()}</td>
+        </tr>
+    `).join('');
+}
+
+function closeUsageModal() {
+    document.getElementById('usageModal').classList.remove('active');
 }
 
 // Search

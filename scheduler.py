@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Set, Tuple
 import csv
 import io
+import random
 import time
 
 # Make ortools optional for compatibility
@@ -75,6 +76,23 @@ class Scheduler:
         for s in self.shifts.values():
             setattr(s, "_scheduler_shift_times_for_volunteer", self._scheduler_shift_times_for_volunteer)
 
+    def prefill(self, assignments: List[Dict[str, str]]):
+        """
+        Record existing assignments. 
+        assignments: List of {"shift_id": "...", "volunteer_id": "..."}
+        """
+        for entry in assignments:
+            sid = entry.get("shift_id")
+            vid = entry.get("volunteer_id")
+            if sid in self.shifts and vid in self.volunteers:
+                shift = self.shifts[sid]
+                vol = self.volunteers[vid]
+                if vid not in shift.assigned:
+                    shift.assigned.append(vid)
+                    vol.assigned_shifts.append(sid)
+                    vol.assigned_hours += shift.duration_hours()
+                    self._assign_map[vid].append((sid, shift.start, shift.end))
+
     def _scheduler_shift_times_for_volunteer(self, volunteer_id: str):
         return self._assign_map.get(volunteer_id, [])
 
@@ -83,6 +101,56 @@ class Scheduler:
             if overlap(s_start, s_end, shift.start, shift.end):
                 return True
         return False
+
+    def assign_simple(self, shuffle_shifts: bool = True):
+        """
+        Very simple, efficient randomized greedy assignment.
+        1. Collect all slots that need filling.
+        2. Optionally shuffle them.
+        3. Assign best available volunteer.
+        """
+        unfilled_shifts = []
+        
+        # Identify all slots (shift, group) that still need filling
+        slots = []
+        for s in self.shifts.values():
+            for group, total_needed in s.required_groups.items():
+                currently_assigned = sum(1 for vid in s.assigned if self.volunteers[vid].group == group)
+                for _ in range(max(0, total_needed - currently_assigned)):
+                    slots.append((s, group))
+
+        if shuffle_shifts:
+            random.shuffle(slots)
+
+        for shift, group in slots:
+            # Find eligible volunteers
+            candidates = [
+                v for v in self.volunteers_by_group.get(group, [])
+                if v.id not in shift.assigned # Can't be assigned twice to same shift
+                and not self._would_overlap(v, shift)
+                and shift.allows(v)
+                and (v.assigned_hours + shift.duration_hours() <= v.max_hours + 1e-9)
+            ]
+            
+            if not candidates:
+                unfilled_shifts.append((shift.id, group, 1))
+                continue
+
+            # Pick volunteer with least hours to keep it balanced
+            # If multiple have same hours, the natural order (or we could shuffle) picks one
+            target = min(candidates, key=lambda x: (x.assigned_hours, len(x.assigned_shifts)))
+            
+            # Assign
+            target.assigned_hours += shift.duration_hours()
+            target.assigned_shifts.append(shift.id)
+            shift.assigned.append(target.id)
+            self._assign_map[target.id].append((shift.id, shift.start, shift.end))
+
+        return {
+            "assigned_shifts": {sid: s.assigned for sid, s in self.shifts.items()},
+            "unfilled_shifts": unfilled_shifts,
+            "volunteers": {vid: {"assigned_hours": v.assigned_hours, "assigned_shifts": v.assigned_shifts} for vid, v in self.volunteers.items()},
+        }
 
     # --------------------
     # Simple greedy assign (backward-compatible)

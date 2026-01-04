@@ -26,6 +26,7 @@ DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DB_HOST = os.getenv("POSTGRES_HOST")
 DB_PORT = os.getenv("POSTGRES_PORT") or "5432"  # Default to direct port
 DB_NAME = os.getenv("POSTGRES_DATABASE", "postgres")
+ADMIN_MASTER_KEY = os.getenv("ADMIN_MASTER_KEY")
 
 # Use DATA_PATH for SQLite persistence if available, otherwise local path
 DB_PATH = os.path.join(os.getenv("DATA_PATH", "."), "api_keys.db")
@@ -178,6 +179,8 @@ def init_database():
                     key_id INTEGER NOT NULL REFERENCES api_keys(id),
                     date TEXT NOT NULL,
                     request_count INTEGER DEFAULT 0,
+                    total_shifts INTEGER DEFAULT 0,
+                    total_volunteers INTEGER DEFAULT 0,
                     UNIQUE(key_id, date)
                 )
             """)
@@ -207,6 +210,8 @@ def init_database():
                     key_id INTEGER NOT NULL,
                     date TEXT NOT NULL,
                     request_count INTEGER DEFAULT 0,
+                    total_shifts INTEGER DEFAULT 0,
+                    total_volunteers INTEGER DEFAULT 0,
                     FOREIGN KEY (key_id) REFERENCES api_keys(id),
                     UNIQUE(key_id, date)
                 )
@@ -219,6 +224,29 @@ def init_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+        
+        # Migration: Add columns if they don't exist
+        try:
+            if DATABASE_URL:
+                cursor.execute("ALTER TABLE api_usage ADD COLUMN IF NOT EXISTS total_shifts INTEGER DEFAULT 0")
+                cursor.execute("ALTER TABLE api_usage ADD COLUMN IF NOT EXISTS total_volunteers INTEGER DEFAULT 0")
+            else:
+                # SQLite PRAGMA table_info returns (id, name, type, notnull, dflt_value, pk)
+                cursor.execute("PRAGMA table_info(api_usage)")
+                col_rows = cursor.fetchall()
+                columns = []
+                for row in col_rows:
+                    if isinstance(row, dict):
+                        columns.append(row['name'])
+                    else:
+                        columns.append(row[1])
+                
+                if 'total_shifts' not in columns:
+                    cursor.execute("ALTER TABLE api_usage ADD COLUMN total_shifts INTEGER DEFAULT 0")
+                if 'total_volunteers' not in columns:
+                    cursor.execute("ALTER TABLE api_usage ADD COLUMN total_volunteers INTEGER DEFAULT 0")
+        except Exception as e:
+            print(f"Migration error: {e}")
 
 # API Key Management
 def generate_api_key() -> str:
@@ -287,7 +315,7 @@ def get_api_key_usage(key_id: int, days: int = 30) -> list:
     with get_db() as conn:
         cursor = get_cursor(conn)
         cursor.execute(f"""
-            SELECT date, request_count
+            SELECT date, request_count, total_shifts, total_volunteers
             FROM api_usage
             WHERE key_id = {PH}
             ORDER BY date DESC
@@ -346,6 +374,26 @@ def check_rate_limit(api_key: str) -> tuple[bool, int, int]:
         """, (key_id,))
         
         return True, count + 1, rate_limit
+
+def record_detailed_usage(api_key: str, shifts_count: int, volunteers_count: int):
+    """ Record the number of shifts and volunteers scheduled for a request. """
+    today = date.today().isoformat()
+    with get_db() as conn:
+        cursor = get_cursor(conn)
+        cursor.execute(f"SELECT id FROM api_keys WHERE key = {PH}", (api_key,))
+        row = cursor.fetchone()
+        if not row:
+            return
+        
+        key_id = row["id"]
+        
+        # We assume the row for today was already created by check_rate_limit
+        cursor.execute(f"""
+            UPDATE api_usage
+            SET total_shifts = total_shifts + {PH},
+                total_volunteers = total_volunteers + {PH}
+            WHERE key_id = {PH} AND date = {PH}
+        """, (shifts_count, volunteers_count, key_id, today))
 
 # Master User Management
 def hash_password(password: str) -> str:
@@ -441,8 +489,14 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
     return api_key
 
 async def verify_admin_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> str:
-    """FastAPI dependency to verify admin JWT token."""
+    """FastAPI dependency to verify admin JWT token or Master Key."""
     token = credentials.credentials
+    
+    # 1. Check for Master Key first (Stateless)
+    if ADMIN_MASTER_KEY and token == ADMIN_MASTER_KEY:
+        return "admin_master_key"
+    
+    # 2. Fallback to JWT verification (Session-based)
     username = verify_access_token(token)
     if not username:
         raise HTTPException(
