@@ -20,7 +20,12 @@ JWT_ALGORITHM = "HS256"
 DEFAULT_RATE_LIMIT = 10000
 
 security = HTTPBearer()
-PH = "%s" if DATABASE_URL else "?"
+
+# Use %s for PostgreSQL and ? for SQLite
+def get_ph():
+    return "%s" if os.getenv("DATABASE_URL") else "?"
+
+PH = get_ph()
 
 # Database connection context manager
 @contextmanager
@@ -359,4 +364,9 @@ async def verify_admin_token(credentials: HTTPAuthorizationCredentials = Securit
     return username
 
 # Initialize database on module import
-init_database()
+try:
+    init_database()
+except Exception as e:
+    print(f"Warning: Database initialization failed: {e}")
+    # We don't raise here to allow the app to start and potentially 
+    # show a better error message when an endpoint is actually called.

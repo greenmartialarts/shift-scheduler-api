@@ -29,6 +29,7 @@ git push origin main
    - `ADMIN_USERNAME`: (Optional)
    - `ADMIN_PASSWORD`: (Optional)
 
+<<<<<<< HEAD
 6. **Analytics & Speed Insights**:
    - Go to your project dashboard on Vercel.
    - Click on the **"Analytics"** tab and click **"Enable"**.
@@ -36,6 +37,11 @@ git push origin main
    - The app is already configured with the necessary script tags in `static/index.html`.
 
 ## Troubleshooting
+=======
+5. Click **"Deploy"**.
+
+## Step 3: Access Your App
+>>>>>>> 9ae5e2a (feat: Add Vercel deployment configuration and documentation.)
 
 Vercel will provide a URL like `https://scheduler-api.vercel.app`.
 - **Admin Dashboard**: `https://scheduler-api.vercel.app/admin`
