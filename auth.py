@@ -32,11 +32,27 @@ JWT_SECRET = secrets.token_urlsafe(32)  # Generate on startup
 JWT_ALGORITHM = "HS256"
 DEFAULT_RATE_LIMIT = 10000
 
+# Helper to extract project ID from Supabase URL
+def get_project_id():
+    s_url = os.getenv("SUPABASE_URL")
+    if s_url:
+        try:
+            # https://xyz.supabase.co -> xyz
+            parsed = urlparse(s_url)
+            if parsed.hostname:
+                return parsed.hostname.split('.')[0]
+        except:
+            pass
+    return None
+
+PROJECT_ID = get_project_id()
+
 security = HTTPBearer()
 
 # Use %s for PostgreSQL and ? for SQLite
 def get_ph():
-    return "%s" if os.getenv("DATABASE_URL") else "?"
+    has_postgres = DATABASE_URL or (DB_USER and DB_PASSWORD and DB_HOST)
+    return "%s" if has_postgres else "?"
 
 PH = get_ph()
 
@@ -59,17 +75,20 @@ def get_db():
                 host = url.hostname
                 port = url.port or 5432
                 dbname = url.path[1:] if url.path else 'postgres'
-                
-                sys.stderr.write(f"DIAGNOSTIC: Connecting via URL (len={len(clean_url)})\n")
             else:
                 user = DB_USER
                 password = DB_PASSWORD
                 host = DB_HOST
                 port = int(DB_PORT)
                 dbname = DB_NAME
-                sys.stderr.write(f"DIAGNOSTIC: Connecting via component variables (host={host})\n")
 
-            sys.stderr.write(f"DIAGNOSTIC: User='{user}', Host='{host}', Port={port}, DB='{dbname}'\n")
+            # AUTO-CORRECT Supabase Pooler Username
+            # If host is a pooler and user is just 'postgres', we MUST add the project ID suffix
+            if host and 'pooler.supabase.com' in host and user == 'postgres' and PROJECT_ID:
+                user = f"postgres.{PROJECT_ID}"
+                sys.stderr.write(f"DIAGNOSTIC: Auto-corrected Supabase pooler username to {user}\n")
+
+            sys.stderr.write(f"DIAGNOSTIC: Connecting user='{user}', host='{host}', port={port}, db='{dbname}'\n")
             
             conn = psycopg2.connect(
                 dbname=dbname,
@@ -84,10 +103,10 @@ def get_db():
             # Try a direct connection with the URL if we have one
             if clean_url:
                 try:
-                    sys.stderr.write("DIAGNOSTIC: Retrying with direct URI string...\n")
+                    sys.stderr.write("DIAGNOSTIC: Final fallback to direct URI string...\n")
                     conn = psycopg2.connect(clean_url)
                 except Exception as e_direct:
-                    sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI failed: {str(e_direct)}\n")
+                    sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI failed point-blank: {str(e_direct)}\n")
                     raise e
             else:
                 raise e
