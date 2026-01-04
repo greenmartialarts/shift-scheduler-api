@@ -2,6 +2,8 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.middleware import Middleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from scheduler import Volunteer, Shift, Scheduler, parse_iso
@@ -12,6 +14,9 @@ from auth import (
     get_api_key_by_id, ensure_admin_exists
 )
 import csv, io
+import json
+import httpx
+from datetime import datetime
 
 app = FastAPI(
     title="Volunteer Scheduler API",
@@ -21,6 +26,43 @@ app = FastAPI(
         "name": "Arnav Shah",
     }
 )
+
+# Vercel Web Analytics Middleware
+class VercelAnalyticsMiddleware(BaseHTTPMiddleware):
+    """Middleware to track API requests with Vercel Web Analytics."""
+    
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        
+        # Track the request asynchronously (non-blocking)
+        try:
+            # Send analytics event to Vercel
+            # This endpoint is created automatically when Web Analytics is enabled on Vercel
+            event_data = {
+                "pathname": request.url.path,
+                "method": request.method,
+                "status": response.status_code,
+            }
+            
+            # Note: Only send tracking if deployed on Vercel (when /_vercel/insights endpoint is available)
+            # This is a best-effort approach and won't fail if endpoint is not available
+            async with httpx.AsyncClient() as client:
+                try:
+                    await client.post(
+                        "/_vercel/insights/view",
+                        json=event_data,
+                        timeout=1.0
+                    )
+                except Exception:
+                    # Silently fail - we don't want analytics to break the API
+                    pass
+        except Exception:
+            # Silently fail - we don't want analytics to interfere with normal operation
+            pass
+        
+        return response
+
+app.add_middleware(VercelAnalyticsMiddleware)
 
 # Serve static files for admin interface
 app.mount("/static", StaticFiles(directory="static"), name="static")
