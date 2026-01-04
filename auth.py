@@ -32,17 +32,31 @@ JWT_SECRET = secrets.token_urlsafe(32)  # Generate on startup
 JWT_ALGORITHM = "HS256"
 DEFAULT_RATE_LIMIT = 10000
 
-# Helper to extract project ID from Supabase URL
+# Helper to extract project ID from various sources
 def get_project_id():
+    # Priority 1: From SUPABASE_URL (most reliable)
     s_url = os.getenv("SUPABASE_URL")
     if s_url:
         try:
-            # https://xyz.supabase.co -> xyz
             parsed = urlparse(s_url)
             if parsed.hostname:
-                return parsed.hostname.split('.')[0]
-        except:
-            pass
+                # xyz.supabase.co -> xyz
+                pid = parsed.hostname.split('.')[0]
+                if pid and pid != 'supabase':
+                    return pid
+        except: pass
+
+    # Priority 2: From POSTGRES_URL (in the username part)
+    p_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
+    if p_url:
+        try:
+            parsed = urlparse(p_url)
+            if parsed.username and '.' in parsed.username:
+                # postgres.xyz -> xyz
+                pid = parsed.username.split('.')[-1]
+                if pid: return pid
+        except: pass
+    
     return None
 
 PROJECT_ID = get_project_id()
@@ -67,6 +81,11 @@ def get_db():
         # Sanitize input if using URL
         clean_url = DATABASE_URL.strip().replace('\r', '').replace('\n', '') if DATABASE_URL else None
         
+        # Diagnostic: Print available environment variable names (not values for security)
+        relevant_vars = [k for k in os.environ.keys() if 'SUPABASE' in k or 'POSTGRES' in k or 'DATABASE' in k]
+        sys.stderr.write(f"DIAGNOSTIC: Env keys found: {', '.join(relevant_vars)}\n")
+        sys.stderr.write(f"DIAGNOSTIC: Detected PROJECT_ID: {PROJECT_ID}\n")
+
         try:
             if clean_url:
                 url = urlparse(clean_url)
@@ -83,12 +102,15 @@ def get_db():
                 dbname = DB_NAME
 
             # AUTO-CORRECT Supabase Pooler Username
-            # If host is a pooler and user is just 'postgres', we MUST add the project ID suffix
-            if host and 'pooler.supabase.com' in host and user == 'postgres' and PROJECT_ID:
-                user = f"postgres.{PROJECT_ID}"
-                sys.stderr.write(f"DIAGNOSTIC: Auto-corrected Supabase pooler username to {user}\n")
+            # If host is a pooler and user doesn't have a dot, we MUST add the project ID suffix
+            is_pooler = host and ('pooler.supabase.com' in host or port == 6543)
+            if is_pooler and user and '.' not in user and PROJECT_ID:
+                sys.stderr.write(f"DIAGNOSTIC: Suffixing pooler user '{user}' with '.{PROJECT_ID}'\n")
+                user = f"{user}.{PROJECT_ID}"
+            elif is_pooler and user and '.' not in user and not PROJECT_ID:
+                sys.stderr.write(f"WARNING: Pooler detected but PROJECT_ID missing! Authentication will likely fail.\n")
 
-            sys.stderr.write(f"DIAGNOSTIC: Connecting user='{user}', host='{host}', port={port}, db='{dbname}'\n")
+            sys.stderr.write(f"DIAGNOSTIC: Attempting connect to {host}:{port} as {user} (db={dbname})\n")
             
             conn = psycopg2.connect(
                 dbname=dbname,
@@ -96,17 +118,18 @@ def get_db():
                 password=password,
                 host=host,
                 port=port,
-                sslmode='require'
+                sslmode='require',
+                connect_timeout=10
             )
         except Exception as e:
-            sys.stderr.write(f"DIAGNOSTIC_ERROR: Postgres connection failed: {str(e)}\n")
+            sys.stderr.write(f"DIAGNOSTIC_ERROR: Postgres connect failed for {user}@{host}: {str(e)}\n")
             # Try a direct connection with the URL if we have one
             if clean_url:
                 try:
                     sys.stderr.write("DIAGNOSTIC: Final fallback to direct URI string...\n")
                     conn = psycopg2.connect(clean_url)
                 except Exception as e_direct:
-                    sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI failed point-blank: {str(e_direct)}\n")
+                    sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI also failed: {str(e_direct)}\n")
                     raise e
             else:
                 raise e
