@@ -39,18 +39,35 @@ def get_db():
         # This prevents issues with dots in usernames which psycopg2 might mis-parse in URI mode.
         try:
             url = urlparse(DATABASE_URL)
+            user = url.username
+            password = url.password
+            host = url.hostname
+            port = url.port or 5432
+            dbname = url.path[1:] if url.path else 'postgres'
+            
+            # Diagnostic for debugging
+            masked_password = password[:2] + "****" + password[-2:] if password and len(password) > 4 else "****"
+            print(f"DEBUG: Connection string length: {len(DATABASE_URL)}")
+            print(f"DEBUG: Parsed user: '{user}' (len={len(user) if user else 0})")
+            print(f"DEBUG: Parsed host: '{host}' (len={len(host) if host else 0})")
+            print(f"DEBUG: Parsed dbname: '{dbname}' (len={len(dbname) if dbname else 0})")
+            print(f"DEBUG: Password length: {len(password) if password else 0}")
+            
             conn = psycopg2.connect(
-                dbname=url.path[1:] if url.path else 'postgres',
-                user=url.username,
-                password=url.password,
-                host=url.hostname,
-                port=url.port or 5432
+                dbname=dbname,
+                user=user,
+                password=password,
+                host=host,
+                port=port
             )
         except Exception as e:
+            print(f"ERROR: Manual connection failed: {str(e)}")
             # Fallback to direct URI connection if parsing fails, but raise original error if it still fails
             try:
+                print("DEBUG: Retrying with direct URI connection...")
                 conn = psycopg2.connect(DATABASE_URL)
-            except Exception:
+            except Exception as e_fallback:
+                print(f"ERROR: URI connection failed: {str(e_fallback)}")
                 raise e
     else:
         # SQLite (Local/Development)
