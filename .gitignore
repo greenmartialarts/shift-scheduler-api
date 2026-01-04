@@ -18,3 +18,5 @@ __pycache__/
 
 # API Keys Database
 api_keys.db
+
+.env

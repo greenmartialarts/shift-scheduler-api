@@ -9,7 +9,7 @@ from auth import (
     verify_api_key, verify_admin_token, verify_master_user,
     create_access_token, create_api_key, get_all_api_keys,
     update_api_key_rate_limit, delete_api_key, get_api_key_usage,
-    get_api_key_by_id
+    get_api_key_by_id, ensure_admin_exists
 )
 import csv, io
 
@@ -62,6 +62,8 @@ def build_scheduler(vols_input: List[VolunteerInput], shifts_input: List[ShiftIn
 @app.get("/admin")
 async def admin_interface():
     """Serve the admin web interface."""
+    # Ensure at least one admin account exists
+    ensure_admin_exists()
     return FileResponse("static/index.html")
 
 class LoginRequest(BaseModel):

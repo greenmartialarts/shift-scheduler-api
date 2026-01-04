@@ -289,6 +289,22 @@ def verify_master_user(username: str, password: str) -> bool:
             return False
         return verify_password(password, row["password_hash"])
 
+def ensure_admin_exists():
+    """Check if any admin exists, if not create one from environment variables."""
+    with get_db() as conn:
+        cursor = get_cursor(conn)
+        cursor.execute("SELECT COUNT(*) as count FROM master_users")
+        row = cursor.fetchone()
+        count = row["count"] if DATABASE_URL else row[0]
+        
+        if count == 0:
+            username = os.getenv("ADMIN_USERNAME", "admin")
+            password = os.getenv("ADMIN_PASSWORD", "admin123")
+            print(f"No admin account found. Creating default admin: {username}")
+            create_master_user(username, password)
+            return True
+    return False
+
 # JWT Token Management
 def create_access_token(username: str, expires_delta: timedelta = timedelta(hours=24)) -> str:
     """Create a JWT access token for admin sessions."""
