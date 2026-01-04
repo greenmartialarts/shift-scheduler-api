@@ -31,6 +31,20 @@ class AssignmentInput(BaseModel):
     shift_id: str
     volunteer_id: str
 
+class VolunteerInput(BaseModel):
+    id: str
+    name: str
+    group: Optional[str] = None
+    max_hours: float
+
+class ShiftInput(BaseModel):
+    id: str
+    start: str
+    end: str
+    required_groups: Dict[str, int]
+    allowed_groups: Optional[List[str]] = None
+    excluded_groups: Optional[List[str]] = None
+
 class ScheduleInput(BaseModel):
     volunteers: List[VolunteerInput]
     unassigned_shifts: List[ShiftInput]
