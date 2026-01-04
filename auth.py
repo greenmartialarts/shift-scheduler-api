@@ -20,6 +20,7 @@ JWT_ALGORITHM = "HS256"
 DEFAULT_RATE_LIMIT = 10000
 
 security = HTTPBearer()
+PH = "%s" if DATABASE_URL else "?"
 
 # Database connection context manager
 @contextmanager
@@ -137,7 +138,7 @@ def create_api_key(name: str, rate_limit: int = DEFAULT_RATE_LIMIT) -> Dict:
     with get_db() as conn:
         cursor = get_cursor(conn)
         cursor.execute(
-            "INSERT INTO api_keys (key, name, rate_limit) VALUES (?, ?, ?)",
+            f"INSERT INTO api_keys (key, name, rate_limit) VALUES ({PH}, {PH}, {PH})",
             (key, name, rate_limit)
         )
         key_id = cursor.lastrowid
@@ -165,7 +166,7 @@ def get_api_key_by_id(key_id: int) -> Optional[Dict]:
     """Get API key details by ID."""
     with get_db() as conn:
         cursor = get_cursor(conn)
-        cursor.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,))
+        cursor.execute(f"SELECT * FROM api_keys WHERE id = {PH}", (key_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -174,7 +175,7 @@ def update_api_key_rate_limit(key_id: int, rate_limit: int) -> bool:
     with get_db() as conn:
         cursor = get_cursor(conn)
         cursor.execute(
-            "UPDATE api_keys SET rate_limit = ? WHERE id = ?",
+            f"UPDATE api_keys SET rate_limit = {PH} WHERE id = {PH}",
             (rate_limit, key_id)
         )
         return cursor.rowcount > 0
@@ -184,20 +185,20 @@ def delete_api_key(key_id: int) -> bool:
     with get_db() as conn:
         cursor = get_cursor(conn)
         # Delete usage records first (foreign key constraint)
-        cursor.execute("DELETE FROM api_usage WHERE key_id = ?", (key_id,))
-        cursor.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+        cursor.execute(f"DELETE FROM api_usage WHERE key_id = {PH}", (key_id,))
+        cursor.execute(f"DELETE FROM api_keys WHERE id = {PH}", (key_id,))
         return cursor.rowcount > 0
 
 def get_api_key_usage(key_id: int, days: int = 30) -> list:
     """Get usage statistics for an API key over the last N days."""
     with get_db() as conn:
         cursor = get_cursor(conn)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT date, request_count
             FROM api_usage
-            WHERE key_id = ?
+            WHERE key_id = {PH}
             ORDER BY date DESC
-            LIMIT ?
+            LIMIT {PH}
         """, (key_id, days))
         return [dict(row) for row in cursor.fetchall()]
 
@@ -213,7 +214,7 @@ def check_rate_limit(api_key: str) -> tuple[bool, int, int]:
         cursor = get_cursor(conn)
         
         # Get key info
-        cursor.execute("SELECT id, rate_limit FROM api_keys WHERE key = ?", (api_key,))
+        cursor.execute(f"SELECT id, rate_limit FROM api_keys WHERE key = {PH}", (api_key,))
         key_row = cursor.fetchone()
         if not key_row:
             return False, 0, 0
@@ -221,15 +222,15 @@ def check_rate_limit(api_key: str) -> tuple[bool, int, int]:
         key_id, rate_limit = key_row["id"], key_row["rate_limit"]
         
         # Get or create today's usage record
-        cursor.execute("""
+        cursor.execute(f"""
             INSERT INTO api_usage (key_id, date, request_count)
-            VALUES (?, ?, 0)
+            VALUES ({PH}, {PH}, 0)
             ON CONFLICT(key_id, date) DO NOTHING
         """, (key_id, today))
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT request_count FROM api_usage
-            WHERE key_id = ? AND date = ?
+            WHERE key_id = {PH} AND date = {PH}
         """, (key_id, today))
         
         count = cursor.fetchone()["request_count"]
@@ -238,17 +239,17 @@ def check_rate_limit(api_key: str) -> tuple[bool, int, int]:
             return False, count, rate_limit
         
         # Increment counter
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE api_usage
             SET request_count = request_count + 1
-            WHERE key_id = ? AND date = ?
+            WHERE key_id = {PH} AND date = {PH}
         """, (key_id, today))
         
         # Update last_used timestamp
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE api_keys
             SET last_used = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = {PH}
         """, (key_id,))
         
         return True, count + 1, rate_limit
@@ -269,7 +270,7 @@ def create_master_user(username: str, password: str) -> bool:
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO master_users (username, password_hash) VALUES (?, ?)",
+                f"INSERT INTO master_users (username, password_hash) VALUES ({PH}, {PH})",
                 (username, password_hash)
             )
             return True
@@ -281,7 +282,7 @@ def verify_master_user(username: str, password: str) -> bool:
     with get_db() as conn:
         cursor = get_cursor(conn)
         cursor.execute(
-            "SELECT password_hash FROM master_users WHERE username = ?",
+            f"SELECT password_hash FROM master_users WHERE username = {PH}",
             (username,)
         )
         row = cursor.fetchone()
@@ -329,7 +330,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
     # Validate key exists
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT key FROM api_keys WHERE key = ?", (api_key,))
+        cursor.execute(f"SELECT key FROM api_keys WHERE key = {PH}", (api_key,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=401,
