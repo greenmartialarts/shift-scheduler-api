@@ -13,9 +13,19 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import contextmanager
 from passlib.hash import pbkdf2_sha256
 from urllib.parse import urlparse
+import sys
 
 # Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Support both manual DATABASE_URL and official Vercel/Supabase integration variables
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("POSTGRES_URL_NON_POOLING")
+
+# Component variables from official integration
+DB_USER = os.getenv("POSTGRES_USER")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+DB_HOST = os.getenv("POSTGRES_HOST")
+DB_PORT = os.getenv("POSTGRES_PORT", "6543")  # Default to Supabase pooler port
+DB_NAME = os.getenv("POSTGRES_DATABASE", "postgres")
+
 # Use DATA_PATH for SQLite persistence if available, otherwise local path
 DB_PATH = os.path.join(os.getenv("DATA_PATH", "."), "api_keys.db")
 JWT_SECRET = secrets.token_urlsafe(32)  # Generate on startup
@@ -34,40 +44,52 @@ PH = get_ph()
 @contextmanager
 def get_db():
     """Get database connection based on environment."""
-    if DATABASE_URL:
-        # Use urlparse for robust parsing of complex connection strings (e.g. Supabase)
-        # This prevents issues with dots in usernames which psycopg2 might mis-parse in URI mode.
+    # Check if we have enough info for a Postgres connection
+    has_postgres_info = DATABASE_URL or (DB_USER and DB_PASSWORD and DB_HOST)
+    
+    if has_postgres_info:
+        # Sanitize input if using URL
+        clean_url = DATABASE_URL.strip().replace('\r', '').replace('\n', '') if DATABASE_URL else None
+        
         try:
-            url = urlparse(DATABASE_URL)
-            user = url.username
-            password = url.password
-            host = url.hostname
-            port = url.port or 5432
-            dbname = url.path[1:] if url.path else 'postgres'
-            
-            # Diagnostic for debugging
-            masked_password = password[:2] + "****" + password[-2:] if password and len(password) > 4 else "****"
-            print(f"DEBUG: Connection string length: {len(DATABASE_URL)}")
-            print(f"DEBUG: Parsed user: '{user}' (len={len(user) if user else 0})")
-            print(f"DEBUG: Parsed host: '{host}' (len={len(host) if host else 0})")
-            print(f"DEBUG: Parsed dbname: '{dbname}' (len={len(dbname) if dbname else 0})")
-            print(f"DEBUG: Password length: {len(password) if password else 0}")
+            if clean_url:
+                url = urlparse(clean_url)
+                user = url.username
+                password = url.password
+                host = url.hostname
+                port = url.port or 5432
+                dbname = url.path[1:] if url.path else 'postgres'
+                
+                sys.stderr.write(f"DIAGNOSTIC: Connecting via URL (len={len(clean_url)})\n")
+            else:
+                user = DB_USER
+                password = DB_PASSWORD
+                host = DB_HOST
+                port = int(DB_PORT)
+                dbname = DB_NAME
+                sys.stderr.write(f"DIAGNOSTIC: Connecting via component variables (host={host})\n")
+
+            sys.stderr.write(f"DIAGNOSTIC: User='{user}', Host='{host}', Port={port}, DB='{dbname}'\n")
             
             conn = psycopg2.connect(
                 dbname=dbname,
                 user=user,
                 password=password,
                 host=host,
-                port=port
+                port=port,
+                sslmode='require'
             )
         except Exception as e:
-            print(f"ERROR: Manual connection failed: {str(e)}")
-            # Fallback to direct URI connection if parsing fails, but raise original error if it still fails
-            try:
-                print("DEBUG: Retrying with direct URI connection...")
-                conn = psycopg2.connect(DATABASE_URL)
-            except Exception as e_fallback:
-                print(f"ERROR: URI connection failed: {str(e_fallback)}")
+            sys.stderr.write(f"DIAGNOSTIC_ERROR: Postgres connection failed: {str(e)}\n")
+            # Try a direct connection with the URL if we have one
+            if clean_url:
+                try:
+                    sys.stderr.write("DIAGNOSTIC: Retrying with direct URI string...\n")
+                    conn = psycopg2.connect(clean_url)
+                except Exception as e_direct:
+                    sys.stderr.write(f"DIAGNOSTIC_ERROR: Direct URI failed: {str(e_direct)}\n")
+                    raise e
+            else:
                 raise e
     else:
         # SQLite (Local/Development)
