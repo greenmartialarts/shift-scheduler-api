@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "api_scheduler.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api_scheduler.py"
+    }
+  ]
+}
