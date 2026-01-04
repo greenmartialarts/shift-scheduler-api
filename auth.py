@@ -1,15 +1,18 @@
 import sqlite3
 import psycopg2
 from psycopg2 import extras
+from psycopg2.extras import RealDictCursor
 import secrets
 import bcrypt
 import jwt
 import os
 from datetime import datetime, timedelta, date
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import contextmanager
+from passlib.hash import pbkdf2_sha256
+from urllib.parse import urlparse
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -30,31 +33,38 @@ PH = get_ph()
 # Database connection context manager
 @contextmanager
 def get_db():
+    """Get database connection based on environment."""
     if DATABASE_URL:
-        # PostgreSQL (Supabase)
-        conn = psycopg2.connect(DATABASE_URL)
-        # Configure to return dict-like rows
-        cursor_factory = extras.RealDictCursor
+        # Use urlparse for robust parsing of complex connection strings (e.g. Supabase)
+        # This prevents issues with dots in usernames which psycopg2 might mis-parse in URI mode.
         try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            url = urlparse(DATABASE_URL)
+            conn = psycopg2.connect(
+                dbname=url.path[1:] if url.path else 'postgres',
+                user=url.username,
+                password=url.password,
+                host=url.hostname,
+                port=url.port or 5432
+            )
+        except Exception as e:
+            # Fallback to direct URI connection if parsing fails, but raise original error if it still fails
+            try:
+                conn = psycopg2.connect(DATABASE_URL)
+            except Exception:
+                raise e
     else:
         # SQLite (Local/Development)
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+    
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def get_cursor(conn):
     if DATABASE_URL:

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from scheduler import Volunteer, Shift, Scheduler, parse_iso
@@ -90,6 +90,11 @@ def generate_key(request: CreateKeyRequest, username: str = Depends(verify_admin
     """Generate a new API key (admin only)."""
     result = create_api_key(request.name, request.rate_limit)
     return result
+
+@app.get("/")
+async def root_redirect():
+    """Redirect root to admin interface."""
+    return RedirectResponse(url="/admin")
 
 @app.get("/admin/keys")
 def list_keys(username: str = Depends(verify_admin_token)):
