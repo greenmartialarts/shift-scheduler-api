@@ -2,20 +2,24 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/api/index"
+    },
+    {
       "source": "/api/(.*)",
-      "destination": "/api/index.go"
+      "destination": "/api/index"
     },
     {
       "source": "/schedule/(.*)",
-      "destination": "/api/index.go"
+      "destination": "/api/index"
     },
     {
       "source": "/admin",
-      "destination": "/api/index.go"
+      "destination": "/api/index"
     },
     {
       "source": "/admin/(.*)",
-      "destination": "/api/index.go"
+      "destination": "/api/index"
     }
   ],
   "headers": [
