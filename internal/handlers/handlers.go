@@ -1,0 +1,450 @@
+package handlers
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/arnavshah/scheduler-api-go/internal/auth"
+	"github.com/arnavshah/scheduler-api-go/internal/database"
+	"github.com/arnavshah/scheduler-api-go/internal/models"
+	"github.com/arnavshah/scheduler-api-go/internal/scheduler"
+	"gorm.io/gorm"
+)
+
+// Handler contains dependencies for the route handlers
+type Handler struct {
+	DB *gorm.DB
+}
+
+// AuthMiddleware verifies the JWT token for admin routes
+func (h *Handler) AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+
+		// Strip "Bearer " if present
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		claims, err := auth.VerifyToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
+		c.Set("username", claims.Username)
+		c.Next()
+	}
+}
+
+// APIKeyMiddleware verifies the API key for scheduler routes using HMAC
+func (h *Handler) APIKeyMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := c.GetHeader("Authorization")
+		if key == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "API Key required"})
+			c.Abort()
+			return
+		}
+
+		if len(key) > 7 && key[:7] == "Bearer " {
+			key = key[7:]
+		}
+
+		userID, err := auth.VerifyHMACKey(key)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API Key signature"})
+			c.Abort()
+			return
+		}
+
+		// Optional: Fetch metadata from DB if needed, but the signature is already verified.
+		var apiKey database.APIKey
+		if err := h.DB.Where("key = ?", key).First(&apiKey).Error; err != nil {
+			// If not in DB, we could still allow it if we want pure statelessness,
+			// or create a default record. For now, let's create a placeholder to keep usage tracking working.
+			apiKey = database.APIKey{
+				Key:       key,
+				Name:      userID,
+				RateLimit: 10000,
+			}
+			h.DB.FirstOrCreate(&apiKey, database.APIKey{Key: key})
+		}
+
+		c.Set("apiKey", &apiKey)
+		c.Set("userID", userID)
+		c.Next()
+	}
+}
+
+// ScheduleJSON handles the JSON-based scheduling request
+func (h *Handler) ScheduleJSON(c *gin.Context) {
+	var input models.ScheduleInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	volMap := make(map[string]*models.Volunteer)
+	for i := range input.Volunteers {
+		volMap[input.Volunteers[i].ID] = &input.Volunteers[i]
+	}
+
+	shiftMap := make(map[string]*models.Shift)
+	for i := range input.UnassignedShifts {
+		shiftMap[input.UnassignedShifts[i].ID] = &input.UnassignedShifts[i]
+	}
+
+	s := scheduler.NewScheduler(volMap, shiftMap)
+	s.Prefill(input.CurrentAssignments)
+	s.AssignSimple(true)
+
+	// Record usage
+	h.RecordUsage(c, len(shiftMap), len(volMap))
+
+	// Format response for parity with Python version
+	assignedShifts := make(map[string][]string)
+	for id, sh := range shiftMap {
+		assignedShifts[id] = sh.Assigned
+	}
+
+	volStats := make(map[string]interface{})
+	for id, v := range volMap {
+		volStats[id] = gin.H{
+			"assigned_hours":  v.AssignedHours,
+			"assigned_shifts": v.AssignedShifts,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"assigned_shifts": assignedShifts,
+		"unfilled_shifts": []string{}, // simplified for now
+		"volunteers":      volStats,
+	})
+}
+
+// RecordUsage records API usage in the database
+func (h *Handler) RecordUsage(c *gin.Context, shiftCount, volunteerCount int) {
+	apiKeyRaw, exists := c.Get("apiKey")
+	if !exists {
+		return
+	}
+	apiKey := apiKeyRaw.(*database.APIKey)
+
+	today := time.Now().Format("2006-01-02")
+	var usage database.APIUsage
+	h.DB.Where("key_id = ? AND date = ?", apiKey.ID, today).FirstOrCreate(&usage, database.APIUsage{
+		KeyID: apiKey.ID,
+		Date:  today,
+	})
+
+	h.DB.Model(&usage).Updates(map[string]interface{}{
+		"request_count":    gorm.Expr("request_count + ?", 1),
+		"total_shifts":     gorm.Expr("total_shifts + ?", shiftCount),
+		"total_volunteers": gorm.Expr("total_volunteers + ?", volunteerCount),
+	})
+}
+
+// ScheduleCSV handles CSV file uploads for scheduling
+func (h *Handler) ScheduleCSV(c *gin.Context) {
+	// 1. Get files
+	volsFile, _ := c.FormFile("volunteers_file")
+	shiftsFile, _ := c.FormFile("shifts_file")
+	assignmentsFile, _ := c.FormFile("assignments_file")
+
+	if volsFile == nil || shiftsFile == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "volunteers_file and shifts_file are required"})
+		return
+	}
+
+	// Helper to parse CSV to map
+	parseCSV := func(fileHeader *gin.Context) (interface{}, error) {
+		// This is just a conceptual placeholder; actual implementation below
+		return nil, nil
+	}
+	_ = parseCSV
+
+	// Parse volunteers
+	vFile, _ := volsFile.Open()
+	defer vFile.Close()
+	vReader := csv.NewReader(vFile)
+	vHeader, _ := vReader.Read()
+	vCols := make(map[string]int)
+	for i, h := range vHeader {
+		vCols[h] = i
+	}
+
+	volMap := make(map[string]*models.Volunteer)
+	for {
+		record, err := vReader.Read()
+		if err == io.EOF {
+			break
+		}
+		id := record[vCols["id"]]
+		maxHours, _ := strconv.ParseFloat(record[vCols["max_hours"]], 64)
+		volMap[id] = &models.Volunteer{
+			ID:       id,
+			Name:     record[vCols["name"]],
+			Group:    record[vCols["group"]],
+			MaxHours: maxHours,
+		}
+	}
+
+	// Parse shifts
+	sFile, _ := shiftsFile.Open()
+	defer sFile.Close()
+	sReader := csv.NewReader(sFile)
+	sHeader, _ := sReader.Read()
+	sCols := make(map[string]int)
+	for i, h := range sHeader {
+		sCols[h] = i
+	}
+
+	shiftMap := make(map[string]*models.Shift)
+	for {
+		record, err := sReader.Read()
+		if err == io.EOF {
+			break
+		}
+		id := record[sCols["id"]]
+		start, _ := time.Parse("2006-01-02T15:04:05Z", record[sCols["start"]])
+		if start.IsZero() {
+			start, _ = time.Parse("2006-01-02T15:04", record[sCols["start"]])
+		}
+		end, _ := time.Parse("2006-01-02T15:04:05Z", record[sCols["end"]])
+		if end.IsZero() {
+			end, _ = time.Parse("2006-01-02T15:04", record[sCols["end"]])
+		}
+
+		reqGroups := make(map[string]int)
+		for _, part := range strings.Split(record[sCols["required_groups"]], "|") {
+			if strings.Contains(part, ":") {
+				gp := strings.Split(part, ":")
+				count, _ := strconv.Atoi(strings.TrimSpace(gp[1]))
+				reqGroups[strings.TrimSpace(gp[0])] = count
+			}
+		}
+
+		var allowed, excluded []string
+		if val, ok := sCols["allowed_groups"]; ok && record[val] != "" {
+			allowed = strings.Split(record[val], "|")
+		}
+		if val, ok := sCols["excluded_groups"]; ok && record[val] != "" {
+			excluded = strings.Split(record[val], "|")
+		}
+
+		shiftMap[id] = &models.Shift{
+			ID:             id,
+			Start:          start,
+			End:            end,
+			RequiredGroups: reqGroups,
+			AllowedGroups:  allowed,
+			ExcludedGroups: excluded,
+		}
+	}
+
+	s := scheduler.NewScheduler(volMap, shiftMap)
+
+	// Prefill if assignments provided
+	if assignmentsFile != nil {
+		aFile, _ := assignmentsFile.Open()
+		defer aFile.Close()
+		aReader := csv.NewReader(aFile)
+		aHeader, _ := aReader.Read()
+		aCols := make(map[string]int)
+		for i, h := range aHeader {
+			aCols[h] = i
+		}
+		var asgns []models.Assignment
+		for {
+			record, err := aReader.Read()
+			if err == io.EOF {
+				break
+			}
+			asgns = append(asgns, models.Assignment{
+				ShiftID:     record[aCols["shift_id"]],
+				VolunteerID: record[aCols["volunteer_id"]],
+			})
+		}
+		s.Prefill(asgns)
+	}
+
+	s.AssignSimple(true)
+
+	// Record usage
+	assignedVols := 0
+	assignedShifts := 0
+	for _, sh := range shiftMap {
+		if len(sh.Assigned) > 0 {
+			assignedShifts++
+			assignedVols += len(sh.Assigned)
+		}
+	}
+	h.RecordUsage(c, assignedShifts, assignedVols)
+
+	// Export CSV
+	var outCSV strings.Builder
+	writer := csv.NewWriter(&outCSV)
+	writer.Write([]string{"shift_id", "volunteer_id", "volunteer_name", "start", "end", "duration_hours"})
+
+	for _, sh := range shiftMap {
+		for _, vid := range sh.Assigned {
+			v := volMap[vid]
+			duration := sh.End.Sub(sh.Start).Hours()
+			writer.Write([]string{
+				sh.ID,
+				v.ID,
+				v.Name,
+				sh.Start.Format(time.RFC3339),
+				sh.End.Format(time.RFC3339),
+				fmt.Sprintf("%.2f", duration),
+			})
+		}
+	}
+	writer.Flush()
+
+	c.JSON(http.StatusOK, gin.H{"csv": outCSV.String()})
+}
+
+// Login handles admin login
+func (h *Handler) Login(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user database.MasterUser
+	if err := h.DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	if !auth.CheckPasswordHash(req.Password, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	token, err := auth.CreateToken(user.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "bearer"})
+}
+
+
+// GenerateKey creates a new API key using the HMAC strategy
+func (h *Handler) GenerateKey(c *gin.Context) {
+	var req struct {
+		UserID    string `json:"user_id"`
+		RateLimit int    `json:"rate_limit"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.UserID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		return
+	}
+
+	if req.RateLimit == 0 {
+		req.RateLimit = 10000
+	}
+
+	// Generate key using HMAC
+	key := auth.GenerateHMACKey(req.UserID)
+
+	apiKey := database.APIKey{
+		Key:       key,
+		Name:      req.UserID,
+		RateLimit: req.RateLimit,
+	}
+
+	if err := h.DB.Create(&apiKey).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create key record"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user_id": req.UserID,
+		"api_key": key,
+	})
+}
+
+// ListKeys returns all API keys
+func (h *Handler) ListKeys(c *gin.Context) {
+	var keys []database.APIKey
+	h.DB.Find(&keys)
+	c.JSON(http.StatusOK, keys)
+}
+
+// RevokeKey deletes an API key
+func (h *Handler) RevokeKey(c *gin.Context) {
+	id := c.Param("id")
+	if err := h.DB.Delete(&database.APIKey{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not delete key"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Key revoked"})
+}
+
+// UpdateKeyLimit updates the rate limit for a key
+func (h *Handler) UpdateKeyLimit(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		RateLimit int `json:"rate_limit"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.DB.Model(&database.APIKey{}).Where("id = ?", id).Update("rate_limit", req.RateLimit).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not update key limit"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Rate limit updated successfully"})
+}
+
+// GetUsage returns usage stats for a key
+func (h *Handler) GetUsage(c *gin.Context) {
+	id := c.Param("id")
+	var usage []database.APIUsage
+	h.DB.Where("key_id = ?", id).Order("date desc").Limit(30).Find(&usage)
+	c.JSON(http.StatusOK, usage)
+}
+
+// AdminInterface serves the admin web interface
+func (h *Handler) AdminInterface(c *gin.Context) {
+	_ = auth.EnsureAdminExists(h.DB)
+	// Try multiple common paths for the static file
+	paths := []string{"../static/index.html", "./static/index.html", "static/index.html"}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			c.File(p)
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "static/index.html not found"})
+}

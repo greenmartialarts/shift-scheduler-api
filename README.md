@@ -1,19 +1,20 @@
-# 🗓️ Volunteer Scheduler API v2.0
+# 🗓️ Volunteer Scheduler API v2.0 (Go Edition)
 
-A high-performance, developer-first API for intelligent shift scheduling. Built for speed, fairness, and seamless integration.
+A high-performance, developer-first API for intelligent shift scheduling. Re-engineered in **Go** for maximum throughput, stateless authentication, and seamless Vercel integration.
 
-[![Vercel Deployment](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://shift-scheduler-api-xi.vercel.app/docs)
+[![Vercel Deployment](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://shift-scheduler-api-xi.vercel.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/badge/Go-1.23-blue?style=for-the-badge&logo=go)](https://go.dev/)
 
 ---
 
 ## ✨ Features
 
-- **🚀 Near-Instant Scheduling**: Advanced randomized greedy logic handles thousands of slots in milliseconds.
-- **🎨 Modern Admin UI**: Beautiful, glassmorphic dashboard for managing API keys and monitoring usage.
-- **📊 Precision Tracking**: Track not just requests, but actual volume (total shifts and volunteers processed).
-- **🔒 Multi-Auth Security**: Supports full JWT admin sessions and a stateless `ADMIN_MASTER_KEY` for automation.
-- **🎲 Randomized Fairness**: Every run produces a unique, valid schedule to prevent scheduling bias.
+- **🚀 Go-Powered Performance**: Migrated from Python to Go for sub-millisecond scheduling and concurrent processing.
+- **🔒 Stateless HMAC API Keys**: Ultra-secure authentication using cryptographic signatures (HMAC-SHA256). No DB lookup required for verification.
+- **🎨 Modern Admin UI**: Beautiful dashboard for managing API keys and monitoring real-time usage.
+- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers, backed by Supabase.
+- **🎲 Randomized Fairness**: Advanced greedy logic ensures unique, valid schedules to eliminate bias.
 - **📥 Universal Input**: Native support for JSON and CSV with seamless pre-filling of existing assignments.
 
 ---
@@ -22,9 +23,9 @@ A high-performance, developer-first API for intelligent shift scheduling. Built 
 
 | Resource | Description | Link |
 | :--- | :--- | :--- |
-| **Live API Docs** | Interactive Swagger/OpenAPI documentation | [View Docs](https://shift-scheduler-api-xi.vercel.app/docs) |
 | **Integration Guide** | Step-by-step guide for external developers | [Read Guide](./API_INTEGRATION_GUIDE.md) |
 | **Admin Dashboard** | Manage keys and view usage stats | [Open Admin](https://shift-scheduler-api-xi.vercel.app/admin) |
+| **Live API** | Health check and version info | [Check API](https://shift-scheduler-api-xi.vercel.app/) |
 
 
 ---
@@ -38,32 +39,32 @@ Get the API running locally in under 60 seconds:
 git clone https://github.com/greenmartialarts/shift-scheduler-api
 cd shift-scheduler-api
 
-# Install dependencies
-pip install -r requirements.txt
-
 # Start the server
-uvicorn api_scheduler:app --reload
+go run cmd/server/main.go
 ```
 
 > [!TIP]
-> Use our `setup_admin.py` script to quickly provision your first administrative account for the dashboard.
+> Use our `cmd/keygen` utility to generate your first HMAC-signed API key:
+> `go run cmd/keygen/main.go arnav_dev`
 
 ---
 
-## 🔑 Requesting Access
+## 🔑 Authentication
 
-The API uses **API Key Authentication**. If you are a developer looking to integrate this into your project, please contact the administrator:
+The API has moved to a **Stateless HMAC** strategy. If you had a legacy API key, you must request or generate a new one.
 
-📧 **arnav.shah.2k10@gmail.com**
+- **Admin Logic**: The `/admin` route automatically provisions a default account from your `.env` if none exists.
+- **API Keys**: All requests must include the HMAC key in the `Authorization` header.
 
 ---
 
 ## 🧪 Tech Stack
 
-- **FastAPI**: Blazing fast, asynchronous Python web framework.
-- **PostgreSQL/SQLite**: Dual-engine support for local development and production persistence.
-- **Supabase**: Powering our production-grade persistent data store.
-- **Pydantic**: Robust data validation and serialization.
+- **Go (Golang)**: Core language for high-performance server logic.
+- **Gin**: Robust web framework for routing and middleware.
+- **GORM**: Type-safe ORM for PostgreSQL and SQLite.
+- **Supabase**: Production-grade persistent data store.
+- **Vercel**: Serverless deployment for global scalability.
 
 ---
 

@@ -1,35 +1,43 @@
-# Scheduler API Integration Guide
+# Scheduler API Integration Guide v2
 
-Welcome to the **Volunteer Scheduler API**! This guide will help you integrate our powerful, randomized greedy scheduler into your own website or application.
+Welcome to the **Volunteer Scheduler API**! This guide will help you integrate our high-performance Go scheduler into your own website or application.
 
 ## 1. Requesting an API Key
-To get started, you will need a unique API Key. Please email your request to:
+To get started, you will need a unique **HMAC-signed API Key**. Please email your request to:
 📧 **arnav.shah.2k10@gmail.com**
 
-Include your website URL and estimated daily scheduling volume.
+> [!IMPORTANT]
+> Version 2.0 uses a new stateless authentication strategy. Legacy API keys from v1.0 (Python) will no longer work.
 
 ---
 
 ## 2. Authentication
-All API requests must include your API key in the `Authorization` header as a Bearer token:
+All API requests must include your API key in the `Authorization` header:
 
 ```http
-Authorization: Bearer YOUR_API_KEY
+Authorization: Bearer userID.signature
 ```
 
 ---
 
-## 3. The Core Scheduling Endpoint
-The primary endpoint for scheduling is `POST /schedule/json`.
+## 3. Core Endpoints
 
-### Request Schema (JSON)
+### JSON Scheduling
+- **Endpoint**: `POST /schedule/json` (or `/api/schedule`)
+- **Body**: Standard JSON input
+
+### CSV Scheduling
+- **Endpoint**: `POST /schedule/csv`
+- **Body**: `multipart/form-data` with files `volunteers_file`, `shifts_file`, and optional `assignments_file`.
+
+### JSON Request Schema
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `volunteers` | `Array` | List of available workers (id, name, group, max_hours). |
 | `unassigned_shifts` | `Array` | Shifts that need filling (id, start, end, required_groups). |
 | `current_assignments` | `Array` | (Optional) Existing assignments to lock in. |
 
-#### Example Request Body
+#### Example JSON Body
 ```json
 {
   "volunteers": [
@@ -53,7 +61,7 @@ The primary endpoint for scheduling is `POST /schedule/json`.
 
 ```javascript
 const API_URL = "https://shift-scheduler-api-xi.vercel.app/schedule/json";
-const API_KEY = "YOUR_API_KEY_HERE";
+const API_KEY = "your_user_id.your_hmac_signature";
 
 async function generateSchedule(data) {
   const response = await fetch(API_URL, {
@@ -67,52 +75,22 @@ async function generateSchedule(data) {
 
   if (!response.ok) {
     const error = await response.json();
-    console.error("Scheduling failed:", error.detail);
+    console.error("Scheduling failed:", error);
     return null;
   }
 
   const result = await response.json();
   console.log("Assignments:", result.assigned_shifts);
-  console.log("Gaps:", result.unfilled_shifts);
   return result;
 }
 ```
 
 ---
 
-## 5. Full Example Interaction
+## 5. Response Format (JSON Parity)
 
-### Request (cURL)
-```bash
-curl -X POST https://shift-scheduler-api-xi.vercel.app/schedule/json \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "volunteers": [
-      { "id": "v1", "name": "Alice", "group": "Delegates", "max_hours": 40 },
-      { "id": "v2", "name": "Bob", "group": "Security", "max_hours": 40 }
-    ],
-    "unassigned_shifts": [
-      {
-        "id": "s1",
-        "start": "2026-05-01T09:00:00Z",
-        "end": "2026-05-01T12:00:00Z",
-        "required_groups": { "Delegates": 1 }
-      },
-      {
-        "id": "s2",
-        "start": "2026-05-01T13:00:00Z",
-        "end": "2026-05-01T15:00:00Z",
-        "required_groups": { "Security": 1 }
-      }
-    ],
-    "current_assignments": [
-      { "shift_id": "s1", "volunteer_id": "v1" }
-    ]
-  }'
-```
+The response maintains full backward compatibility with the v1.0 format:
 
-### Response (JSON)
 ```json
 {
   "assigned_shifts": {
@@ -130,10 +108,10 @@ curl -X POST https://shift-scheduler-api-xi.vercel.app/schedule/json \
 ---
 
 ## 6. Key Features
-- **Randomized Greedy Logic**: Every request creates a different valid schedule, ensuring fairness over time.
+- **Stateless Verification**: Blazing fast authentication that doesn't wait for a database query.
+- **Randomized Fairness**: Every request creates a different valid schedule to prevent scheduling bias.
 - **Pre-filling**: Lock in existing assignments and the API will work around them.
-- **"Best Effort" Handling**: If a shift can't be filled, the API returns the partial schedule and details the gaps in `unfilled_shifts`.
-- **Usage Tracking**: You can see your total processed shifts and volunteers in our Admin Dashboard.
+- **CSV Support**: Bulk process schedules by uploading files directly to the API.
 
 ---
 

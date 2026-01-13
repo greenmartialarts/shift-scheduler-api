@@ -1,14 +1,32 @@
 {
-  "builds": [
+  "version": 2,
+  "rewrites": [
     {
-      "src": "api_scheduler.py",
-      "use": "@vercel/python"
+      "source": "/api/(.*)",
+      "destination": "/api/index.go"
+    },
+    {
+      "source": "/schedule/(.*)",
+      "destination": "/api/index.go"
+    },
+    {
+      "source": "/admin",
+      "destination": "/api/index.go"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/api/index.go"
     }
   ],
-  "routes": [
+  "headers": [
     {
-      "src": "/(.*)",
-      "dest": "api_scheduler.py"
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     }
   ]
 }
