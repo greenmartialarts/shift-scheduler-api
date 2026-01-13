@@ -2,13 +2,12 @@ package handler
 
 import (
 	"net/http"
-	"os"
 
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"github.com/arnavshah/scheduler-api-go/internal/auth"
 	"github.com/arnavshah/scheduler-api-go/internal/database"
 	"github.com/arnavshah/scheduler-api-go/internal/handlers"
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 var r *gin.Engine
