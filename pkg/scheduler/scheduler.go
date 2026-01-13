@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/arnavshah/scheduler-api-go/internal/models"
+	"github.com/arnavshah/scheduler-api-go/pkg/models"
 )
 
 // Scheduler handles the logic of assigning volunteers to shifts
@@ -135,7 +135,7 @@ func (s *Scheduler) AssignSimple(shuffle bool) {
 					best = cand
 				}
 			}
-			
+
 			shift.Assigned = append(shift.Assigned, best.ID)
 			best.AssignedHours += duration
 			best.AssignedShifts = append(best.AssignedShifts, shift.ID)
@@ -147,10 +147,10 @@ func (s *Scheduler) AssignSimple(shuffle bool) {
 func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 	// For simplicity and speed in serverless, we'll use a multi-pass greedy strategy
 	// that tries different shuffles and keeps the best one (scored by unfilled slots)
-	
+
 	bestScore := -1.0
 	var bestAssignments map[string][]string // shiftID -> []volunteerID
-	
+
 	start := time.Now()
 	timeout := time.Duration(timeoutSeconds) * time.Second
 
@@ -169,9 +169,9 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 		for _, sh := range s.Shifts {
 			sh.Assigned = nil
 		}
-		
+
 		s.AssignSimple(true)
-		
+
 		// Score
 		score := 0.0
 		totalRequired := 0
@@ -183,7 +183,7 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 			filled += len(sh.Assigned)
 		}
 		score = float64(filled) / float64(totalRequired)
-		
+
 		if score > bestScore {
 			bestScore = score
 			bestAssignments = make(map[string][]string)
@@ -191,7 +191,7 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 				bestAssignments[id] = append([]string{}, sh.Assigned...)
 			}
 		}
-		
+
 		if bestScore >= 1.0 {
 			break // Perfect score
 		}

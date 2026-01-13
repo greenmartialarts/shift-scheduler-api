@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arnavshah/scheduler-api-go/pkg/database"
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"github.com/arnavshah/scheduler-api-go/internal/database"
 )
 
 var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
@@ -74,7 +74,7 @@ func VerifyAPIKey(db *gorm.DB, key string) (*database.APIKey, error) {
 	if err := db.Where("key = ?", key).First(&apiKey).Error; err != nil {
 		return nil, err
 	}
-	
+
 	now := time.Now()
 	apiKey.LastUsed = &now
 	db.Save(&apiKey)
@@ -86,7 +86,7 @@ func VerifyAPIKey(db *gorm.DB, key string) (*database.APIKey, error) {
 func EnsureAdminExists(db *gorm.DB) error {
 	var count int64
 	db.Model(&database.MasterUser{}).Count(&count)
-	
+
 	if count == 0 {
 		username := os.Getenv("ADMIN_USERNAME")
 		if username == "" {
@@ -96,17 +96,17 @@ func EnsureAdminExists(db *gorm.DB) error {
 		if password == "" {
 			password = "admin123"
 		}
-		
+
 		hash, err := HashPassword(password)
 		if err != nil {
 			return err
 		}
-		
+
 		user := database.MasterUser{
 			Username:     username,
 			PasswordHash: hash,
 		}
-		
+
 		err = db.Create(&user).Error
 		if err == nil {
 			println("Default admin user created: " + username)

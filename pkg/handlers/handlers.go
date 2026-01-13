@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arnavshah/scheduler-api-go/pkg/auth"
+	"github.com/arnavshah/scheduler-api-go/pkg/database"
+	"github.com/arnavshah/scheduler-api-go/pkg/models"
+	"github.com/arnavshah/scheduler-api-go/pkg/scheduler"
 	"github.com/gin-gonic/gin"
-	"github.com/arnavshah/scheduler-api-go/internal/auth"
-	"github.com/arnavshah/scheduler-api-go/internal/database"
-	"github.com/arnavshah/scheduler-api-go/internal/models"
-	"github.com/arnavshah/scheduler-api-go/internal/scheduler"
 	"gorm.io/gorm"
 )
 
@@ -350,7 +350,6 @@ func (h *Handler) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "bearer"})
 }
-
 
 // GenerateKey creates a new API key using the HMAC strategy
 func (h *Handler) GenerateKey(c *gin.Context) {

@@ -3,9 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/arnavshah/scheduler-api-go/internal/auth"
-	"github.com/arnavshah/scheduler-api-go/internal/database"
-	"github.com/arnavshah/scheduler-api-go/internal/handlers"
+	"github.com/arnavshah/scheduler-api-go/pkg/auth"
+	"github.com/arnavshah/scheduler-api-go/pkg/database"
+	"github.com/arnavshah/scheduler-api-go/pkg/handlers"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
