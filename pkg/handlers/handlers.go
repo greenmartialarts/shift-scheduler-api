@@ -1,11 +1,12 @@
 package handlers
 
 import (
+	"embed"
 	"encoding/csv"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+//go:embed static/*
+var staticEmbed embed.FS
 
 // Handler contains dependencies for the route handlers
 type Handler struct {
@@ -434,16 +438,24 @@ func (h *Handler) GetUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, usage)
 }
 
-// AdminInterface serves the admin web interface
+// AdminInterface serves the admin web interface from embedded files
 func (h *Handler) AdminInterface(c *gin.Context) {
 	_ = auth.EnsureAdminExists(h.DB)
-	// Try multiple common paths for the static file
-	paths := []string{"../static/index.html", "./static/index.html", "static/index.html"}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			c.File(p)
-			return
-		}
+
+	data, err := staticEmbed.ReadFile("static/index.html")
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "static/index.html not found in embedded FS"})
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{"error": "static/index.html not found"})
+
+	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+}
+
+// GetStaticFS returns the embedded filesystem for static assets
+func (h *Handler) GetStaticFS() http.FileSystem {
+	sub, err := fs.Sub(staticEmbed, "static")
+	if err != nil {
+		panic(err)
+	}
+	return http.FS(sub)
 }

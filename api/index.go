@@ -27,9 +27,8 @@ func init() {
 	r = gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
-	// Static files (on Vercel, static files in /static are typically handled by Vercel directly,
-	// but we include this for local `vercel dev` parity if needed)
-	r.Static("/static", "./static")
+	// Static files served from embedded FS
+	r.StaticFS("/static", h.GetStaticFS())
 
 	// Routes
 	r.GET("/", func(c *gin.Context) {

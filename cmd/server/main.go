@@ -33,15 +33,8 @@ func main() {
 
 	r := gin.Default()
 
-	// Admin interface - serve static files If needed
-	// Try to find the static directory in common locations
-	if _, err := os.Stat("./static"); err != nil {
-		if _, err := os.Stat("../static"); err == nil {
-			r.Static("/static", "../static")
-		}
-	} else {
-		r.Static("/static", "./static")
-	}
+	// Admin interface - serve static files from embedded FS
+	r.StaticFS("/static", h.GetStaticFS())
 
 	// Routes
 	r.GET("/", func(c *gin.Context) {
