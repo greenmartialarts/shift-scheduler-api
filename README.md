@@ -11,10 +11,9 @@ A high-performance, developer-first API for intelligent shift scheduling. Re-eng
 ## ✨ Features
 
 - **🚀 Go-Powered Performance**: Migrated from Python to Go for sub-millisecond scheduling and concurrent processing.
-- **🔒 Stateless HMAC API Keys**: Ultra-secure authentication using cryptographic signatures (HMAC-SHA256). No DB lookup required for verification.
-- **🎨 Modern Admin UI**: Beautiful dashboard for managing API keys and monitoring real-time usage.
-- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers, backed by Supabase.
-- **🎲 Randomized Fairness**: Advanced greedy logic ensures unique, valid schedules to eliminate bias.
+- **🔒 Stateless HMAC API Keys**: Ultra-secure authentication using cryptographic signatures (HMAC-SHA256).
+- **🎨 Embedded Admin UI**: A beautiful, single-binary dashboard for managing API keys, embedded via `go:embed`.
+- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers, backed by GORM.
 - **📥 Universal Input**: Native support for JSON and CSV with seamless pre-filling of existing assignments.
 
 ---
@@ -39,13 +38,15 @@ Get the API running locally in under 60 seconds:
 git clone https://github.com/greenmartialarts/shift-scheduler-api
 cd shift-scheduler-api
 
+# Setup environment (requires PostgreSQL or SQLite)
+cp .env.example .env
+
 # Start the server
 go run cmd/server/main.go
 ```
 
-> [!TIP]
-> Use our `cmd/keygen` utility to generate your first HMAC-signed API key:
-> `go run cmd/keygen/main.go arnav_dev`
+> [!NOTE]
+> Static assets are automatically bundled using Go 1.23's `embed` functionality. No external web server is required to serve the Admin UI.
 
 ---
 
@@ -60,11 +61,12 @@ The API has moved to a **Stateless HMAC** strategy. If you had a legacy API key,
 
 ## 🧪 Tech Stack
 
-- **Go (Golang)**: Core language for high-performance server logic.
+- **Go (Golang) 1.23**: Core language for high-performance server logic.
 - **Gin**: Robust web framework for routing and middleware.
 - **GORM**: Type-safe ORM for PostgreSQL and SQLite.
-- **Supabase**: Production-grade persistent data store.
+- **PostgreSQL**: Production database for API keys and tracking.
 - **Vercel**: Serverless deployment for global scalability.
+- **Go Embed**: Native asset bundling for zero-dependency deployments.
 
 ---
 

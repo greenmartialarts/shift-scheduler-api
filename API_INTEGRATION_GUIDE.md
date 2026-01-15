@@ -12,11 +12,13 @@ To get started, you will need a unique **HMAC-signed API Key**. Please email you
 ---
 
 ## 2. Authentication
-All API requests must include your API key in the `Authorization` header:
+All API requests must include your API key in the `Authorization` header. Our API uses a signed HMAC format for security:
 
 ```http
-Authorization: Bearer userID.signature
+Authorization: Bearer [user_id].[signature]
 ```
+
+Example: `Authorization: Bearer arnav.sk_7a9b...2f1c`
 
 ---
 
