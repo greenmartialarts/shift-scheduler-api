@@ -358,7 +358,7 @@ func (h *Handler) Login(c *gin.Context) {
 // GenerateKey creates a new API key using the HMAC strategy
 func (h *Handler) GenerateKey(c *gin.Context) {
 	var req struct {
-		UserID    string `json:"user_id"`
+		Name      string `json:"name"`
 		RateLimit int    `json:"rate_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -366,8 +366,8 @@ func (h *Handler) GenerateKey(c *gin.Context) {
 		return
 	}
 
-	if req.UserID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
 
@@ -376,12 +376,21 @@ func (h *Handler) GenerateKey(c *gin.Context) {
 	}
 
 	// Generate key using HMAC
-	key := auth.GenerateHMACKey(req.UserID)
+	key := auth.GenerateHMACKey(req.Name)
+
+	// Create preview (e.g., sk_...****)
+	preview := ""
+	if len(key) > 8 {
+		preview = key[:3] + "..." + key[len(key)-4:]
+	} else {
+		preview = "****"
+	}
 
 	apiKey := database.APIKey{
-		Key:       key,
-		Name:      req.UserID,
-		RateLimit: req.RateLimit,
+		Key:        key,
+		Name:       req.Name,
+		KeyPreview: preview,
+		RateLimit:  req.RateLimit,
 	}
 
 	if err := h.DB.Create(&apiKey).Error; err != nil {
@@ -390,8 +399,8 @@ func (h *Handler) GenerateKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user_id": req.UserID,
-		"api_key": key,
+		"name": req.Name,
+		"key":  key,
 	})
 }
 
@@ -399,7 +408,7 @@ func (h *Handler) GenerateKey(c *gin.Context) {
 func (h *Handler) ListKeys(c *gin.Context) {
 	var keys []database.APIKey
 	h.DB.Find(&keys)
-	c.JSON(http.StatusOK, keys)
+	c.JSON(http.StatusOK, gin.H{"keys": keys})
 }
 
 // RevokeKey deletes an API key
@@ -416,10 +425,19 @@ func (h *Handler) RevokeKey(c *gin.Context) {
 func (h *Handler) UpdateKeyLimit(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		RateLimit int `json:"rate_limit"`
+		RateLimit int `json:"rate_limit" form:"rate_limit"`
 	}
+
+	// Try JSON first, then Form/Query
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := c.ShouldBindQuery(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "rate_limit is required"})
+			return
+		}
+	}
+
+	if req.RateLimit == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rate limit"})
 		return
 	}
 
@@ -435,7 +453,7 @@ func (h *Handler) GetUsage(c *gin.Context) {
 	id := c.Param("id")
 	var usage []database.APIUsage
 	h.DB.Where("key_id = ?", id).Order("date desc").Limit(30).Find(&usage)
-	c.JSON(http.StatusOK, usage)
+	c.JSON(http.StatusOK, gin.H{"usage": usage})
 }
 
 // AdminInterface serves the admin web interface from embedded files

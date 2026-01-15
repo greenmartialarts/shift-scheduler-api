@@ -12,12 +12,13 @@ import (
 
 // APIKey represents the api_keys table
 type APIKey struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	Key       string         `gorm:"unique;not null" json:"key"`
-	Name      string         `gorm:"not null" json:"name"`
-	RateLimit int            `gorm:"default:10000" json:"rate_limit"`
-	CreatedAt time.Time      `json:"created_at"`
-	LastUsed  *time.Time     `json:"last_used"`
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	Key        string     `gorm:"unique;not null" json:"key"`
+	Name       string     `gorm:"not null" json:"name"`
+	KeyPreview string     `json:"key_preview"`
+	RateLimit  int        `gorm:"default:10000" json:"rate_limit"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsed   *time.Time `json:"last_used"`
 }
 
 // APIUsage represents the api_usage table
