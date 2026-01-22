@@ -1,4 +1,4 @@
-# 🗓️ Volunteer Scheduler API v2.0 (Go Edition)
+# 🗓️ Volunteer Scheduler API v2.1 (Go Edition)
 
 A high-performance, developer-first API for intelligent shift scheduling. Re-engineered in **Go** for maximum throughput, stateless authentication, and seamless Vercel integration.
 
@@ -10,10 +10,10 @@ A high-performance, developer-first API for intelligent shift scheduling. Re-eng
 
 ## ✨ Features
 
-- **🚀 Go-Powered Performance**: Migrated from Python to Go for sub-millisecond scheduling and concurrent processing.
-- **🔒 Stateless HMAC API Keys**: Ultra-secure authentication using cryptographic signatures (HMAC-SHA256).
-- **🎨 Embedded Admin UI**: A beautiful, single-binary dashboard for managing API keys, embedded via `go:embed`.
-- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers, backed by GORM.
+- **🚀 Ultra-Fast Scheduling**: Optimized Go engine for sub-millisecond scheduling, pre-calculation of shift metrics, and efficient volunteer matching.
+- **🔒 Stateless HMAC API Keys**: Secure, high-speed authentication using cryptographic signatures (HMAC-SHA256) with zero-query verification.
+- **⚡ Optimized DB Layer**: Efficient single-query upserts for usage tracking, designed specifically for serverless free-tier constraints.
+- **🎨 Embedded Admin UI**: A beautiful, lightweight dashboard for managing API keys, bundled via `go:embed`.
 - **📥 Universal Input**: Native support for JSON and CSV with seamless pre-filling of existing assignments.
 
 ---
