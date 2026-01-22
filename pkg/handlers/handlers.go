@@ -17,6 +17,7 @@ import (
 	"github.com/arnavshah/scheduler-api-go/pkg/scheduler"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //go:embed static/*
@@ -75,18 +76,13 @@ func (h *Handler) APIKeyMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Optional: Fetch metadata from DB if needed, but the signature is already verified.
+		// Fetch or create API key record to track usage
 		var apiKey database.APIKey
-		if err := h.DB.Where("key = ?", key).First(&apiKey).Error; err != nil {
-			// If not in DB, we could still allow it if we want pure statelessness,
-			// or create a default record. For now, let's create a placeholder to keep usage tracking working.
-			apiKey = database.APIKey{
-				Key:       key,
-				Name:      userID,
-				RateLimit: 10000,
-			}
-			h.DB.FirstOrCreate(&apiKey, database.APIKey{Key: key})
-		}
+		h.DB.Where(database.APIKey{Key: key}).FirstOrCreate(&apiKey, database.APIKey{
+			Key:       key,
+			Name:      userID,
+			RateLimit: 10000,
+		})
 
 		c.Set("apiKey", &apiKey)
 		c.Set("userID", userID)
@@ -140,7 +136,7 @@ func (h *Handler) ScheduleJSON(c *gin.Context) {
 	})
 }
 
-// RecordUsage records API usage in the database
+// RecordUsage records API usage in the database using an efficient upsert
 func (h *Handler) RecordUsage(c *gin.Context, shiftCount, volunteerCount int) {
 	apiKeyRaw, exists := c.Get("apiKey")
 	if !exists {
@@ -149,16 +145,21 @@ func (h *Handler) RecordUsage(c *gin.Context, shiftCount, volunteerCount int) {
 	apiKey := apiKeyRaw.(*database.APIKey)
 
 	today := time.Now().Format("2006-01-02")
-	var usage database.APIUsage
-	h.DB.Where("key_id = ? AND date = ?", apiKey.ID, today).FirstOrCreate(&usage, database.APIUsage{
-		KeyID: apiKey.ID,
-		Date:  today,
-	})
 
-	h.DB.Model(&usage).Updates(map[string]interface{}{
-		"request_count":    gorm.Expr("request_count + ?", 1),
-		"total_shifts":     gorm.Expr("total_shifts + ?", shiftCount),
-		"total_volunteers": gorm.Expr("total_volunteers + ?", volunteerCount),
+	// Use OnConflict for a single-query upsert (supported by both Postgres and SQLite)
+	h.DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "key_id"}, {Name: "date"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"request_count":    gorm.Expr("request_count + ?", 1),
+			"total_shifts":     gorm.Expr("total_shifts + ?", shiftCount),
+			"total_volunteers": gorm.Expr("total_volunteers + ?", volunteerCount),
+		}),
+	}).Create(&database.APIUsage{
+		KeyID:           apiKey.ID,
+		Date:            today,
+		RequestCount:    1,
+		TotalShifts:     shiftCount,
+		TotalVolunteers: volunteerCount,
 	})
 }
 
@@ -174,18 +175,19 @@ func (h *Handler) ScheduleCSV(c *gin.Context) {
 		return
 	}
 
-	// Helper to parse CSV to map
-	parseCSV := func(fileHeader *gin.Context) (interface{}, error) {
-		// This is just a conceptual placeholder; actual implementation below
-		return nil, nil
-	}
-	_ = parseCSV
-
 	// Parse volunteers
-	vFile, _ := volsFile.Open()
+	vFile, err := volsFile.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open volunteers file"})
+		return
+	}
 	defer vFile.Close()
 	vReader := csv.NewReader(vFile)
-	vHeader, _ := vReader.Read()
+	vHeader, err := vReader.Read()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read volunteers header"})
+		return
+	}
 	vCols := make(map[string]int)
 	for i, h := range vHeader {
 		vCols[h] = i
@@ -196,6 +198,9 @@ func (h *Handler) ScheduleCSV(c *gin.Context) {
 		record, err := vReader.Read()
 		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			continue
 		}
 		id := record[vCols["id"]]
 		maxHours, _ := strconv.ParseFloat(record[vCols["max_hours"]], 64)
@@ -208,10 +213,18 @@ func (h *Handler) ScheduleCSV(c *gin.Context) {
 	}
 
 	// Parse shifts
-	sFile, _ := shiftsFile.Open()
+	sFile, err := shiftsFile.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open shifts file"})
+		return
+	}
 	defer sFile.Close()
 	sReader := csv.NewReader(sFile)
-	sHeader, _ := sReader.Read()
+	sHeader, err := sReader.Read()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read shifts header"})
+		return
+	}
 	sCols := make(map[string]int)
 	for i, h := range sHeader {
 		sCols[h] = i

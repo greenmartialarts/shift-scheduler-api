@@ -82,60 +82,76 @@ func (s *Scheduler) Allows(shift *models.Shift, volunteer *models.Volunteer) boo
 	return true
 }
 
+// GroupByGroup returns volunteers grouped by their group name
+func (s *Scheduler) GroupByGroup() map[string][]*models.Volunteer {
+	volsByGroup := make(map[string][]*models.Volunteer)
+	for _, vol := range s.Volunteers {
+		volsByGroup[vol.Group] = append(volsByGroup[vol.Group], vol)
+	}
+	return volsByGroup
+}
+
 // AssignSimple implements a greedy randomized assignment logic
 func (s *Scheduler) AssignSimple(shuffle bool) {
+	s.AssignSimpleWithGroups(shuffle, s.GroupByGroup())
+}
+
+// AssignSimpleWithGroups implements a greedy randomized assignment logic with pre-grouped volunteers
+func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string][]*models.Volunteer) {
 	type slot struct {
 		shiftID string
 		group   string
 	}
 
+	// Pre-calculate shift durations and collect slots
+	shiftDurations := make(map[string]float64, len(s.Shifts))
 	var slots []slot
 	for shiftID, shift := range s.Shifts {
+		shiftDurations[shiftID] = s.DurationHours(shift.Start, shift.End)
 		for group, count := range shift.RequiredGroups {
 			// Find how many of this group are already assigned
 			countAlready := 0
 			for _, volID := range shift.Assigned {
-				if s.Volunteers[volID].Group == group {
+				if vol, ok := s.Volunteers[volID]; ok && vol.Group == group {
 					countAlready++
 				}
 			}
 			needed := count - countAlready
-			for i := 0; i < needed; i++ {
-				slots = append(slots, slot{shiftID, group})
+			if needed > 0 {
+				for i := 0; i < needed; i++ {
+					slots = append(slots, slot{shiftID, group})
+				}
 			}
 		}
 	}
 
-	if shuffle {
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(slots), func(i, j int) {
+	if shuffle && len(slots) > 0 {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(slots), func(i, j int) {
 			slots[i], slots[j] = slots[j], slots[i]
 		})
 	}
 
 	for _, sl := range slots {
 		shift := s.Shifts[sl.shiftID]
-		duration := s.DurationHours(shift.Start, shift.End)
+		duration := shiftDurations[sl.shiftID]
 
-		var candidates []*models.Volunteer
-		for _, vol := range s.Volunteers {
-			if vol.Group == sl.group &&
-				vol.AssignedHours+duration <= vol.MaxHours &&
+		var best *models.Volunteer
+		minHours := -1.0
+
+		for _, vol := range volsByGroup[sl.group] {
+			if vol.AssignedHours+duration <= vol.MaxHours &&
 				!s.WouldOverlap(vol, shift) &&
 				s.Allows(shift, vol) {
-				candidates = append(candidates, vol)
+
+				if best == nil || vol.AssignedHours < minHours {
+					best = vol
+					minHours = vol.AssignedHours
+				}
 			}
 		}
 
-		if len(candidates) > 0 {
-			// Pick one with least hours to balance load
-			best := candidates[0]
-			for _, cand := range candidates {
-				if cand.AssignedHours < best.AssignedHours {
-					best = cand
-				}
-			}
-
+		if best != nil {
 			shift.Assigned = append(shift.Assigned, best.ID)
 			best.AssignedHours += duration
 			best.AssignedShifts = append(best.AssignedShifts, shift.ID)
@@ -160,6 +176,8 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 		originalVols[id] = v.AssignedHours
 	}
 
+	volsByGroup := s.GroupByGroup()
+
 	for time.Since(start) < timeout {
 		// Reset
 		for _, v := range s.Volunteers {
@@ -170,7 +188,7 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 			sh.Assigned = nil
 		}
 
-		s.AssignSimple(true)
+		s.AssignSimpleWithGroups(true, volsByGroup)
 
 		// Score
 		score := 0.0
