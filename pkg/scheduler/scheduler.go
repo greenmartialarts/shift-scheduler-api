@@ -82,8 +82,22 @@ func (s *Scheduler) Allows(shift *models.Shift, volunteer *models.Volunteer) boo
 	return true
 }
 
+// GroupByGroup returns volunteers grouped by their group name
+func (s *Scheduler) GroupByGroup() map[string][]*models.Volunteer {
+	volsByGroup := make(map[string][]*models.Volunteer)
+	for _, vol := range s.Volunteers {
+		volsByGroup[vol.Group] = append(volsByGroup[vol.Group], vol)
+	}
+	return volsByGroup
+}
+
 // AssignSimple implements a greedy randomized assignment logic
 func (s *Scheduler) AssignSimple(shuffle bool) {
+	s.AssignSimpleWithGroups(shuffle, s.GroupByGroup())
+}
+
+// AssignSimpleWithGroups implements a greedy randomized assignment logic with pre-grouped volunteers
+func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string][]*models.Volunteer) {
 	type slot struct {
 		shiftID string
 		group   string
@@ -116,12 +130,6 @@ func (s *Scheduler) AssignSimple(shuffle bool) {
 		r.Shuffle(len(slots), func(i, j int) {
 			slots[i], slots[j] = slots[j], slots[i]
 		})
-	}
-
-	// Group volunteers by group for faster lookup
-	volsByGroup := make(map[string][]*models.Volunteer)
-	for _, vol := range s.Volunteers {
-		volsByGroup[vol.Group] = append(volsByGroup[vol.Group], vol)
 	}
 
 	for _, sl := range slots {
@@ -168,6 +176,8 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 		originalVols[id] = v.AssignedHours
 	}
 
+	volsByGroup := s.GroupByGroup()
+
 	for time.Since(start) < timeout {
 		// Reset
 		for _, v := range s.Volunteers {
@@ -178,7 +188,7 @@ func (s *Scheduler) AssignOptimal(timeoutSeconds int) {
 			sh.Assigned = nil
 		}
 
-		s.AssignSimple(true)
+		s.AssignSimpleWithGroups(true, volsByGroup)
 
 		// Score
 		score := 0.0
