@@ -1,4 +1,4 @@
-# 🗓️ Volunteer Scheduler API v2.1 (Go Edition)
+# 🗓️ Volunteer Scheduler API v2.2 (Go Edition)
 
 A high-performance, developer-first API for intelligent shift scheduling. Re-engineered in **Go** for maximum throughput, stateless authentication, and seamless Vercel integration.
 
@@ -72,6 +72,20 @@ The API has moved to a **Stateless HMAC** strategy. If you had a legacy API key,
 
 - **Admin Logic**: The `/admin` route automatically provisions a default account from your `.env` if none exists.
 - **API Keys**: All requests must include the HMAC key in the `Authorization` header.
+
+---
+
+## 📦 Versioning
+
+This project uses **automatic semantic versioning** via GitHub Actions.
+
+| Commit Prefix | Version Bump | Example |
+| :--- | :--- | :--- |
+| `feat:` | Minor (resets patch) | 2.1.14 → 2.2.0 |
+| Anything else | Patch | 2.1.0 → 2.1.1 |
+| Manual tag | Major | `git tag v3.0.0` |
+
+The version is automatically updated in `api/index.go` and a git tag is created on every push to `main`.
 
 ---
 
