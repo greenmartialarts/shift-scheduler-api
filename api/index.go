@@ -34,7 +34,7 @@ func init() {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Shift Scheduler API (Go Version on Vercel)",
-			"version": "2.2.0",
+			"version": "2.2.1",
 		})
 	})
 
