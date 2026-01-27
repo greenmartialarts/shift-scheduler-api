@@ -1,0 +1,73 @@
+name: Auto Version
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(grep -oP '"version": "\K[0-9]+\.[0-9]+\.[0-9]+' api/index.go)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Calculate new version
+        id: new
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+          
+          # Check if any commit message starts with "feat:"
+          COMMITS=$(git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~10")..HEAD 2>/dev/null || git log --oneline -10)
+          echo "Recent commits:"
+          echo "$COMMITS"
+          
+          if echo "$COMMITS" | grep -qiE "^[a-f0-9]+ feat:"; then
+            # Feature commit: bump minor, reset patch
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            echo "Found feat: commit - bumping minor version"
+          else
+            # Any other commit: bump patch
+            PATCH=$((PATCH + 1))
+            echo "No feat: commit - bumping patch version"
+          fi
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update version in code
+        if: steps.current.outputs.version != steps.new.outputs.version
+        run: |
+          sed -i 's/"version": "${{ steps.current.outputs.version }}"/"version": "${{ steps.new.outputs.version }}"/' api/index.go
+          echo "Updated api/index.go to version ${{ steps.new.outputs.version }}"
+
+      - name: Commit and tag
+        if: steps.current.outputs.version != steps.new.outputs.version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api/index.go
+          git commit -m "chore: bump version to ${{ steps.new.outputs.version }} [skip ci]"
+          git tag "v${{ steps.new.outputs.version }}"
+          git push
+          git push --tags
+          echo "✅ Released v${{ steps.new.outputs.version }}"
