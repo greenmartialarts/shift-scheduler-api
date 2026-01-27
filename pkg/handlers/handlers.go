@@ -263,6 +263,11 @@ func (h *Handler) ScheduleCSV(c *gin.Context) {
 			end, _ = time.Parse("2006-01-02T15:04", record[sCols["end"]])
 		}
 
+		// Fix for overnight shifts (e.g. 10 PM to 2 AM) or Midnight wrap (22:00 to 00:00)
+		if end.Before(start) || end.Equal(start) {
+			end = end.Add(24 * time.Hour)
+		}
+
 		reqGroups := make(map[string]int)
 		for _, part := range strings.Split(record[sCols["required_groups"]], "|") {
 			if strings.Contains(part, ":") {

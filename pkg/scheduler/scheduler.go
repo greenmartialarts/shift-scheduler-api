@@ -108,9 +108,28 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 
 	// Pre-calculate shift durations and collect slots
 	shiftDurations := make(map[string]float64, len(s.Shifts))
+
+	// Collect shifts
+	shiftKeys := make([]string, 0, len(s.Shifts))
+	for k := range s.Shifts {
+		shiftKeys = append(shiftKeys, k)
+	}
+
+	// To prioritize filling "as many slots as possible completely",
+	// we should shuffle the SHIFTS, but keep the slots for each shift contiguous.
+	// This way, we try to fully staff Shift A before moving to Shift B.
+	if shuffle && len(shiftKeys) > 0 {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(shiftKeys), func(i, j int) {
+			shiftKeys[i], shiftKeys[j] = shiftKeys[j], shiftKeys[i]
+		})
+	}
+
 	var slots []slot
-	for shiftID, shift := range s.Shifts {
+	for _, shiftID := range shiftKeys {
+		shift := s.Shifts[shiftID]
 		shiftDurations[shiftID] = s.DurationHours(shift.Start, shift.End)
+
 		for group, count := range shift.RequiredGroups {
 			// Find how many of this group are already assigned
 			countAlready := 0
@@ -128,12 +147,8 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 		}
 	}
 
-	if shuffle && len(slots) > 0 {
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		r.Shuffle(len(slots), func(i, j int) {
-			slots[i], slots[j] = slots[j], slots[i]
-		})
-	}
+	// NOTE: We do NOT shuffle the final slots array here,
+	// because we want to preserve the per-shift grouping from the loop above.
 
 	for _, sl := range slots {
 		shift := s.Shifts[sl.shiftID]
@@ -182,7 +197,8 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 				reasons = append(reasons, fmt.Sprintf("%d volunteers were at max hours", maxHoursCount))
 			}
 			if overlapCount > 0 {
-				reasons = append(reasons, fmt.Sprintf("%d volunteers had overlapping shifts", overlapCount))
+				// Changed message per user request
+				reasons = append(reasons, fmt.Sprintf("Prevented double booking for %d volunteers", overlapCount))
 			}
 			if disallowedCount > 0 {
 				reasons = append(reasons, fmt.Sprintf("%d volunteers were disallowed by group rules", disallowedCount))
