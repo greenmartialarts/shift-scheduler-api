@@ -12,8 +12,10 @@ A high-performance, developer-first API for intelligent shift scheduling. Re-eng
 
 - **🚀 Go-Powered Performance**: Migrated from Python to Go for sub-millisecond scheduling and concurrent processing.
 - **🔒 Stateless HMAC API Keys**: Ultra-secure authentication using cryptographic signatures (HMAC-SHA256).
-- **🎨 Embedded Admin UI**: A beautiful, single-binary dashboard for managing API keys, embedded via `go:embed`.
-- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers, backed by GORM.
+- **🎨 Embedded Admin UI + Sandbox**: A beautiful dashboard for managing keys and a **"Try it Now"** sandbox for instant API testing.
+- **🔬 Conflict Resolution**: Intelligent feedback on why shifts couldn't be filled (AI-style insights).
+- **⚖️ Fairness Metrics**: Real-time tracking of workload distribution using Standard Deviation scoring.
+- **📊 Precision Tracking**: Detailed usage metrics tracking processed shifts and volunteers.
 - **📥 Universal Input**: Native support for JSON and CSV with seamless pre-filling of existing assignments.
 
 ---
@@ -23,8 +25,8 @@ A high-performance, developer-first API for intelligent shift scheduling. Re-eng
 | Resource | Description | Link |
 | :--- | :--- | :--- |
 | **Integration Guide** | Step-by-step guide for external developers | [Read Guide](./API_INTEGRATION_GUIDE.md) |
-| **Admin Dashboard** | Manage keys and view usage stats | [Open Admin](https://shift-scheduler-api-xi.vercel.app/admin) |
-| **Live API** | Health check and version info | [Check API](https://shift-scheduler-api-xi.vercel.app/) |
+| **Admin Dashboard** | Manage keys, view usage, and **test in the sandbox** | [Open Admin](https://shift-scheduler-api-xi.vercel.app/admin) |
+| **Live API** | Health check and version info | [Check API](https://shift-scheduler-api-3nxm.vercel.app/) |
 
 
 ---

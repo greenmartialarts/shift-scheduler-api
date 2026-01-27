@@ -1,6 +1,8 @@
 package scheduler
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 type Scheduler struct {
 	Volunteers map[string]*models.Volunteer
 	Shifts     map[string]*models.Shift
+	Conflicts  []models.ConflictReason
 }
 
 // NewScheduler creates a new scheduler instance
@@ -118,12 +121,34 @@ func (s *Scheduler) AssignSimple(shuffle bool) {
 		duration := s.DurationHours(shift.Start, shift.End)
 
 		var candidates []*models.Volunteer
+		var reasons []string
+
+		maxHoursCount := 0
+		overlapCount := 0
+		disallowedCount := 0
+
 		for _, vol := range s.Volunteers {
-			if vol.Group == sl.group &&
-				vol.AssignedHours+duration <= vol.MaxHours &&
-				!s.WouldOverlap(vol, shift) &&
-				s.Allows(shift, vol) {
+			if vol.Group != sl.group {
+				continue
+			}
+
+			// Check constraints and track why they fail
+			fitsHours := vol.AssignedHours+duration <= vol.MaxHours
+			noOverlap := !s.WouldOverlap(vol, shift)
+			isAllowed := s.Allows(shift, vol)
+
+			if fitsHours && noOverlap && isAllowed {
 				candidates = append(candidates, vol)
+			} else {
+				if !fitsHours {
+					maxHoursCount++
+				}
+				if !noOverlap {
+					overlapCount++
+				}
+				if !isAllowed {
+					disallowedCount++
+				}
 			}
 		}
 
@@ -139,8 +164,50 @@ func (s *Scheduler) AssignSimple(shuffle bool) {
 			shift.Assigned = append(shift.Assigned, best.ID)
 			best.AssignedHours += duration
 			best.AssignedShifts = append(best.AssignedShifts, shift.ID)
+		} else {
+			// Record conflict
+			if maxHoursCount > 0 {
+				reasons = append(reasons, fmt.Sprintf("%d volunteers were at max hours", maxHoursCount))
+			}
+			if overlapCount > 0 {
+				reasons = append(reasons, fmt.Sprintf("%d volunteers had overlapping shifts", overlapCount))
+			}
+			if disallowedCount > 0 {
+				reasons = append(reasons, fmt.Sprintf("%d volunteers were disallowed by group rules", disallowedCount))
+			}
+			if len(reasons) == 0 {
+				reasons = append(reasons, "no volunteers found in this group")
+			}
+
+			s.Conflicts = append(s.Conflicts, models.ConflictReason{
+				ShiftID: sl.shiftID,
+				Group:   sl.group,
+				Reasons: reasons,
+			})
 		}
 	}
+}
+
+// CalculateFairnessScore returns the standard deviation of assigned hours.
+// Lower is better (more balanced).
+func (s *Scheduler) CalculateFairnessScore() float64 {
+	if len(s.Volunteers) == 0 {
+		return 0
+	}
+
+	var sum float64
+	for _, v := range s.Volunteers {
+		sum += v.AssignedHours
+	}
+	mean := sum / float64(len(s.Volunteers))
+
+	var varianceSum float64
+	for _, v := range s.Volunteers {
+		diff := v.AssignedHours - mean
+		varianceSum += diff * diff
+	}
+	variance := varianceSum / float64(len(s.Volunteers))
+	return math.Sqrt(variance)
 }
 
 // AssignOptimal attempts a more thorough assignment (simplified backtracking)

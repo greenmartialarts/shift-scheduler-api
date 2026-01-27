@@ -121,11 +121,26 @@ func (h *Handler) ScheduleJSON(c *gin.Context) {
 
 	// Format response for parity with Python version
 	assignedShifts := make(map[string][]string)
+	unfilledShifts := make(map[string]bool)
 	for id, sh := range shiftMap {
 		assignedShifts[id] = sh.Assigned
+
+		// Determine which shifts have unfilled slots
+		totalNeeded := 0
+		for _, count := range sh.RequiredGroups {
+			totalNeeded += count
+		}
+		if len(sh.Assigned) < totalNeeded {
+			unfilledShifts[id] = true
+		}
 	}
 
-	volStats := make(map[string]interface{})
+	unfilledList := make([]string, 0, len(unfilledShifts))
+	for id := range unfilledShifts {
+		unfilledList = append(unfilledList, id)
+	}
+
+	volStats := make(map[string]any)
 	for id, v := range volMap {
 		volStats[id] = gin.H{
 			"assigned_hours":  v.AssignedHours,
@@ -133,10 +148,12 @@ func (h *Handler) ScheduleJSON(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"assigned_shifts": assignedShifts,
-		"unfilled_shifts": []string{}, // simplified for now
-		"volunteers":      volStats,
+	c.JSON(http.StatusOK, models.ScheduleResponse{
+		AssignedShifts: assignedShifts,
+		UnfilledShifts: unfilledList,
+		Conflicts:      s.Conflicts,
+		FairnessScore:  s.CalculateFairnessScore(),
+		Volunteers:     volStats,
 	})
 }
 

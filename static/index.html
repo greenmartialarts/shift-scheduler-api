@@ -80,60 +80,106 @@
         </nav>
 
         <main class="container">
-            <header class="dashboard-header">
-                <h1>API Key Management</h1>
-                <button id="createKeyBtn" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="16"></line>
-                        <line x1="8" y1="12" x2="16" y2="12"></line>
-                    </svg>
-                    <span>Generate New Key</span>
-                </button>
-            </header>
+            <!-- Navigation Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('keys')">API Keys</button>
+                <button class="tab-btn" onclick="showTab('sandbox')">Interactive Sandbox</button>
+            </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            <!-- Keys Section -->
+            <div id="keysTab" class="tab-content active">
+                <header class="dashboard-header">
+                    <h1>API Key Management</h1>
+                    <button id="createKeyBtn" class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2">
-                            <path
-                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                            </path>
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="16"></line>
+                            <line x1="8" y1="12" x2="16" y2="12"></line>
                         </svg>
+                        <span>Generate New Key</span>
+                    </button>
+                </header>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <path
+                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                                </path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="totalKeys">0</div>
+                            <div class="stat-label">Active API Keys</div>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="totalKeys">0</div>
-                        <div class="stat-label">Active API Keys</div>
+                </div>
+
+                <div class="keys-section">
+                    <div class="section-header">
+                        <h2>Active Keys</h2>
+                        <input type="text" id="searchKeys" class="search-input" placeholder="Search keys...">
+                    </div>
+
+                    <div class="table-container">
+                        <table class="keys-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Key Preview</th>
+                                    <th>Rate Limit</th>
+                                    <th>Created</th>
+                                    <th>Last Used</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="keysTableBody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
 
-            <div class="keys-section">
-                <div class="section-header">
-                    <h2>Active Keys</h2>
-                    <input type="text" id="searchKeys" class="search-input" placeholder="Search keys...">
-                </div>
+            <!-- Sandbox Section -->
+            <div id="sandboxTab" class="tab-content">
+                <div class="sandbox-container">
+                    <div class="sandbox-editor">
+                        <div class="section-header">
+                            <h2>Try it Now</h2>
+                            <p class="subtitle">Test the scheduler with custom JSON data</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="sandboxInput">Input JSON</label>
+                            <textarea id="sandboxInput" class="json-editor" spellcheck="false" rows="20"></textarea>
+                        </div>
+                        <div class="sandbox-actions">
+                            <button id="runSandboxBtn" class="btn btn-primary">Run Scheduler</button>
+                            <button id="resetSandboxBtn" class="btn btn-secondary">Load Sample Data</button>
+                        </div>
+                        <div id="sandboxError" class="error-message"></div>
+                    </div>
 
-                <div class="table-container">
-                    <table class="keys-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Key Preview</th>
-                                <th>Rate Limit</th>
-                                <th>Created</th>
-                                <th>Last Used</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="keysTableBody">
-                            <!-- Populated by JavaScript -->
-                        </tbody>
-                    </table>
+                    <div class="sandbox-results">
+                        <div class="section-header">
+                            <h2>Results</h2>
+                            <div id="fairnessMetric" class="metric-badge">Fairness Score: --</div>
+                        </div>
+                        
+                        <div id="conflictAlert" class="alert alert-warning" style="display: none;">
+                            <strong>⚠️ Scheduling Conflicts Detected</strong>
+                            <p>Some shifts could not be fully filled. See details below.</p>
+                        </div>
+
+                        <div id="sandboxOutput" class="output-display">
+                            <p class="placeholder-text">Run the scheduler to see results here...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>

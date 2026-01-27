@@ -29,6 +29,22 @@ type Assignment struct {
 	VolunteerID string `json:"volunteer_id"`
 }
 
+// ConflictReason represents why a shift could not be filled
+type ConflictReason struct {
+	ShiftID string   `json:"shift_id"`
+	Group   string   `json:"group"`
+	Reasons []string `json:"reasons"`
+}
+
+// ScheduleResponse is the data structure for the scheduling result
+type ScheduleResponse struct {
+	AssignedShifts map[string][]string `json:"assigned_shifts"`
+	UnfilledShifts []string            `json:"unfilled_shifts"` // shift IDs that have ANY unfilled slots
+	Conflicts      []ConflictReason    `json:"conflicts,omitempty"`
+	FairnessScore  float64             `json:"fairness_score"`
+	Volunteers     map[string]any       `json:"volunteers"` // ID -> {assigned_hours, assigned_shifts}
+}
+
 // ScheduleInput is the data structure for the scheduling endpoint
 type ScheduleInput struct {
 	Volunteers         []Volunteer  `json:"volunteers"`

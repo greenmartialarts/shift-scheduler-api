@@ -19,6 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('createKeyForm').addEventListener('submit', handleCreateKey);
     document.getElementById('editLimitForm').addEventListener('submit', handleEditLimit);
     document.getElementById('searchKeys').addEventListener('input', handleSearch);
+    document.getElementById('runSandboxBtn').addEventListener('click', runSandbox);
+    document.getElementById('resetSandboxBtn').addEventListener('click', resetSandbox);
+    
+    // Set default sandbox data
+    resetSandbox();
 });
 
 // Authentication
@@ -344,6 +349,125 @@ function handleSearch(e) {
         key.key_preview.toLowerCase().includes(query)
     );
     renderKeys(filteredKeys);
+}
+
+// Tabs
+function showTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    const activeBtn = document.querySelector(`.tab-btn[onclick="showTab('${tabId}')"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    const activeContent = document.getElementById(`${tabId}Tab`);
+    if (activeContent) activeContent.classList.add('active');
+}
+
+// Sandbox
+const SAMPLE_DATA = {
+    volunteers: [
+        { id: "v1", name: "Alice", group: "Staff", max_hours: 10 },
+        { id: "v2", name: "Bob", group: "Staff", max_hours: 5 },
+        { id: "v3", name: "Charlie", group: "Volunteer", max_hours: 20 }
+    ],
+    unassigned_shifts: [
+        { id: "s1", start: "2026-05-01T09:00:00Z", end: "2026-05-01T17:00:00Z", required_groups: { "Staff": 1 } },
+        { id: "s2", start: "2026-05-01T09:00:00Z", end: "2026-05-01T17:00:00Z", required_groups: { "Staff": 1 } },
+        { id: "s3", start: "2026-05-01T12:00:00Z", end: "2026-05-01T15:00:00Z", required_groups: { "Volunteer": 1 } }
+    ],
+    current_assignments: []
+};
+
+function resetSandbox() {
+    document.getElementById('sandboxInput').value = JSON.stringify(SAMPLE_DATA, null, 2);
+}
+
+async function runSandbox() {
+    const inputStr = document.getElementById('sandboxInput').value;
+    const errorEl = document.getElementById('sandboxError');
+    const outputEl = document.getElementById('sandboxOutput');
+    const fairnessEl = document.getElementById('fairnessMetric');
+    const conflictAlertEl = document.getElementById('conflictAlert');
+    const btn = document.getElementById('runSandboxBtn');
+
+    errorEl.classList.remove('active');
+    conflictAlertEl.style.display = 'none';
+    outputEl.innerHTML = '<p class="placeholder-text">Running scheduler...</p>';
+    btn.disabled = true;
+
+    try {
+        const inputData = JSON.parse(inputStr);
+        
+        // Find a valid API key to use for testing
+        let testKey = currentKeys.length > 0 ? currentKeys[0].key : authToken; // Fallback or prompt for key
+        
+        // In the admin dashboard, we can actually call /api/schedule with the auth token if we allow it in backend,
+        // but typically keys are used. For now, let's use the first key we found or prompt for one.
+        if (currentKeys.length === 0) {
+            throw new Error('Please create an API key first to use the sandbox.');
+        }
+        testKey = currentKeys[0].key;
+
+        const response = await fetch('/api/schedule', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${testKey}`
+            },
+            body: JSON.stringify(inputData)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Execution failed');
+        }
+
+        const result = await response.json();
+        renderSandboxResults(result);
+    } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.classList.add('active');
+        outputEl.innerHTML = '<p class="placeholder-text" style="color: var(--error);">Error during execution.</p>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function renderSandboxResults(result) {
+    const outputEl = document.getElementById('sandboxOutput');
+    const fairnessEl = document.getElementById('fairnessMetric');
+    const conflictAlertEl = document.getElementById('conflictAlert');
+
+    fairnessEl.textContent = `Fairness Score: ${result.fairness_score.toFixed(2)}`;
+    
+    if (result.conflicts && result.conflicts.length > 0) {
+        conflictAlertEl.style.display = 'block';
+    }
+
+    let html = `<h3>Assignments</h3>`;
+    for (const [shiftId, volunteers] of Object.entries(result.assigned_shifts)) {
+        html += `
+            <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--bg-tertiary); border-radius: 4px;">
+                <strong>Shift ${shiftId}:</strong> ${volunteers.join(', ') || '<span style="color: var(--error);">Unfilled</span>'}
+            </div>
+        `;
+    }
+
+    if (result.conflicts && result.conflicts.length > 0) {
+        html += `<h3 style="margin-top: 1.5rem; color: var(--warning);">Conflicts Details</h3>`;
+        result.conflicts.forEach(c => {
+            html += `
+                <div class="conflict-item">
+                    <h4>Shift ${c.shift_id} (${c.group})</h4>
+                    <ul>
+                        ${c.reasons.map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        });
+    }
+
+    outputEl.innerHTML = html;
 }
 
 // Utility Functions

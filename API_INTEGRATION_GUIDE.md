@@ -99,7 +99,15 @@ The response maintains full backward compatibility with the v1.0 format:
     "s1": ["v1"],
     "s2": ["v2"]
   },
-  "unfilled_shifts": [],
+  "unfilled_shifts": ["s3"],
+  "conflicts": [
+    {
+      "shift_id": "s3",
+      "group": "Staff",
+      "reasons": ["2 volunteers were at max hours"]
+    }
+  ],
+  "fairness_score": 0.45,
   "volunteers": {
     "v1": { "assigned_hours": 3.0, "assigned_shifts": ["s1"] },
     "v2": { "assigned_hours": 2.0, "assigned_shifts": ["s2"] }
@@ -112,6 +120,8 @@ The response maintains full backward compatibility with the v1.0 format:
 ## 6. Key Features
 - **Stateless Verification**: Blazing fast authentication that doesn't wait for a database query.
 - **Randomized Fairness**: Every request creates a different valid schedule to prevent scheduling bias.
+- **Conflict Insights**: Granular feedback on why specific shifts couldn't be filled (e.g., "max hours", "overlaps").
+- **Fairness Scoring**: A mathematical score (Standard Deviation) to measure how evenly shifts are distributed.
 - **Pre-filling**: Lock in existing assignments and the API will work around them.
 - **CSV Support**: Bulk process schedules by uploading files directly to the API.
 
