@@ -118,12 +118,13 @@ The response maintains full backward compatibility with the v1.0 format:
 ---
 
 ## 6. Key Features
-- **Stateless Verification**: Blazing fast authentication that doesn't wait for a database query.
-- **Randomized Fairness**: Every request creates a different valid schedule to prevent scheduling bias.
+- **Stateless Verification**: Blazing fast authentication using HMAC signatures.
+- **Optimized Performance**: The Go engine uses pre-calculated metrics and efficient grouping for sub-millisecond processing.
+- **Randomized Fairness**: Every request creates a different valid schedule to prevent scheduling bias while maintaining load balancing.
 - **Conflict Insights**: Granular feedback on why specific shifts couldn't be filled (e.g., "max hours", "overlaps").
 - **Fairness Scoring**: A mathematical score (Standard Deviation) to measure how evenly shifts are distributed.
 - **Pre-filling**: Lock in existing assignments and the API will work around them.
-- **CSV Support**: Bulk process schedules by uploading files directly to the API.
+- **CSV Support**: Bulk process schedules by uploading files directly to the API via multipart form-data.
 
 ---
 

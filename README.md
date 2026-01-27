@@ -1,4 +1,4 @@
-# 🗓️ Volunteer Scheduler API v2.0 (Go Edition)
+# 🗓️ Volunteer Scheduler API v2.1 (Go Edition)
 
 A high-performance, developer-first API for intelligent shift scheduling. Re-engineered in **Go** for maximum throughput, stateless authentication, and seamless Vercel integration.
 
