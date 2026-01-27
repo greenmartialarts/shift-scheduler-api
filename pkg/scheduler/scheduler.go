@@ -139,25 +139,26 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 		shift := s.Shifts[sl.shiftID]
 		duration := shiftDurations[sl.shiftID]
 
-		var candidates []*models.Volunteer
+		var best *models.Volunteer
+		minHours := -1.0
 		var reasons []string
 
 		maxHoursCount := 0
 		overlapCount := 0
 		disallowedCount := 0
 
-		for _, vol := range s.Volunteers {
-			if vol.Group != sl.group {
-				continue
-			}
-
+		// Use the pre-calculated volsByGroup for high performance
+		for _, vol := range volsByGroup[sl.group] {
 			// Check constraints and track why they fail
 			fitsHours := vol.AssignedHours+duration <= vol.MaxHours
 			noOverlap := !s.WouldOverlap(vol, shift)
 			isAllowed := s.Allows(shift, vol)
 
 			if fitsHours && noOverlap && isAllowed {
-				candidates = append(candidates, vol)
+				if best == nil || vol.AssignedHours < minHours {
+					best = vol
+					minHours = vol.AssignedHours
+				}
 			} else {
 				if !fitsHours {
 					maxHoursCount++
@@ -167,16 +168,6 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 				}
 				if !isAllowed {
 					disallowedCount++
-				}
-			}
-		}
-
-		if len(candidates) > 0 {
-			// Pick one with least hours to balance load
-			best := candidates[0]
-			for _, cand := range candidates {
-				if cand.AssignedHours < best.AssignedHours {
-					best = cand
 				}
 			}
 		}

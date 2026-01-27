@@ -40,7 +40,7 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Shift Scheduler API (Go Version)",
-			"version": "2.0.0",
+			"version": "2.1.0",
 		})
 	})
 
