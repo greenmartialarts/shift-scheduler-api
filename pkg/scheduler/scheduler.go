@@ -200,17 +200,22 @@ func (s *Scheduler) AssignSimpleWithGroups(shuffle bool, volsByGroup map[string]
 	}
 }
 
-// CalculateFairnessScore returns the standard deviation of assigned hours.
-// Lower is better (more balanced).
+// CalculateFairnessScore returns a percentage (0-100) representing how evenly
+// shifts are distributed. 100% is perfectly fair (Standard Deviation = 0).
 func (s *Scheduler) CalculateFairnessScore() float64 {
 	if len(s.Volunteers) == 0 {
-		return 0
+		return 100.0
 	}
 
 	var sum float64
 	for _, v := range s.Volunteers {
 		sum += v.AssignedHours
 	}
+
+	if sum == 0 {
+		return 100.0 // Everyone having 0 hours is perfectly fair
+	}
+
 	mean := sum / float64(len(s.Volunteers))
 
 	var varianceSum float64
@@ -219,7 +224,15 @@ func (s *Scheduler) CalculateFairnessScore() float64 {
 		varianceSum += diff * diff
 	}
 	variance := varianceSum / float64(len(s.Volunteers))
-	return math.Sqrt(variance)
+	stdDev := math.Sqrt(variance)
+
+	// Convert SD to a percentage relative to the mean
+	// 100% means SD is 0. 0% means SD is >= mean.
+	score := (1.0 - (stdDev / mean)) * 100.0
+	if score < 0 {
+		return 0.0
+	}
+	return score
 }
 
 // AssignOptimal attempts a more thorough assignment (simplified backtracking)

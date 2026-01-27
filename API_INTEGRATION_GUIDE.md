@@ -46,12 +46,33 @@ Example: `Authorization: Bearer arnav.sk_7a9b...2f1c`
 ### Response Body
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `assigned_shifts` | `Object` | Map of `shift_id` -> `[volunteer_ids]`. |
-| `unfilled_shifts` | `Array` | List of `shift_ids` with missing slots. |
-| `fairness_score` | `Float` | Workload distribution score (Lower is better). |
+| `fairness_score` | `Float` | Workload distribution score (0-100%). Higher is better. |
 | `conflicts` | `Array` | Detailed reasons for unfilled shifts. |
 | `volunteers` | `Object` | Map of `volunteer_id` -> `{assigned_hours, assigned_shifts}` summary. |
 
+---
+
+## 5. Understanding the Fairness Score
+
+The `fairness_score` measures how evenly shifts are distributed among your volunteers.
+
+- **Unit**: **Percentage (%)** (0 - 100%).
+- **Interpretation**:
+  - `100.0`: **Perfectly Balanced**. Every volunteer is working the exact same number of hours.
+  - `Higher is Better`: 100% means zero variation in workload.
+  - `Low Score (<50%)`: **Imbalanced**. Some volunteers are significantly over-scheduled while others are under-utilized.
+
+### 💡 Presentation Tips
+When displaying this to your users, you can use the raw percentage directly:
+
+| Score | Rating | UI Suggestion |
+| :--- | :--- | :--- |
+| **> 90%** | 🌟 Excellent | Green Progress Bar / 5 Stars |
+| **70% - 90%** | ✅ Good | Blue Progress Bar / 4 Stars |
+| **50% - 70%** | ⚠️ Fair | Yellow Progress Bar / 3 Stars |
+| **< 50%** | ❗ Imbalanced | Red Progress Bar / 1-2 Stars |
+
+---
 ### 📝 Example API Response
 ```json
 {
@@ -60,7 +81,7 @@ Example: `Authorization: Bearer arnav.sk_7a9b...2f1c`
     "shift_102": ["vol_3"]
   },
   "unfilled_shifts": ["shift_103"],
-  "fairness_score": 0.12,
+  "fairness_score": 88.5,
   "conflicts": [
     {
       "shift_id": "shift_103",

@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('searchKeys').addEventListener('input', handleSearch);
     document.getElementById('runSandboxBtn').addEventListener('click', runSandbox);
     document.getElementById('resetSandboxBtn').addEventListener('click', resetSandbox);
-    
+
     // Set default sandbox data
     resetSandbox();
 });
@@ -355,10 +355,10 @@ function handleSearch(e) {
 function showTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    
+
     const activeBtn = document.querySelector(`.tab-btn[onclick="showTab('${tabId}')"]`);
     if (activeBtn) activeBtn.classList.add('active');
-    
+
     const activeContent = document.getElementById(`${tabId}Tab`);
     if (activeContent) activeContent.classList.add('active');
 }
@@ -397,10 +397,10 @@ async function runSandbox() {
 
     try {
         const inputData = JSON.parse(inputStr);
-        
+
         // Find a valid API key to use for testing
         let testKey = currentKeys.length > 0 ? currentKeys[0].key : authToken; // Fallback or prompt for key
-        
+
         // In the admin dashboard, we can actually call /api/schedule with the auth token if we allow it in backend,
         // but typically keys are used. For now, let's use the first key we found or prompt for one.
         if (currentKeys.length === 0) {
@@ -438,8 +438,8 @@ function renderSandboxResults(result) {
     const fairnessEl = document.getElementById('fairnessMetric');
     const conflictAlertEl = document.getElementById('conflictAlert');
 
-    fairnessEl.textContent = `Fairness Score: ${result.fairness_score.toFixed(2)}`;
-    
+    fairnessEl.textContent = `Fairness Score: ${result.fairness_score.toFixed(1)}%`;
+
     if (result.conflicts && result.conflicts.length > 0) {
         conflictAlertEl.style.display = 'block';
     }
