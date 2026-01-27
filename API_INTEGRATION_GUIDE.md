@@ -1,4 +1,4 @@
-# Scheduler API Integration Guide v2
+# Scheduler API Integration Guide v2.1
 
 Welcome to the **Volunteer Scheduler API**! This guide will help you integrate our high-performance Go scheduler into your own website or application.
 
@@ -7,12 +7,12 @@ To get started, you will need a unique **HMAC-signed API Key**. Please email you
 📧 **arnav.shah.2k10@gmail.com**
 
 > [!IMPORTANT]
-> Version 2.0 uses a new stateless authentication strategy. Legacy API keys from v1.0 (Python) will no longer work.
+> Version 2.0+ uses a stateless authentication strategy. Legacy API keys from v1.0 (Python) will no longer work.
 
 ---
 
 ## 2. Authentication
-All API requests must include your API key in the `Authorization` header. Our API uses a signed HMAC format for security:
+All API requests must include your API key in the `Authorization` header:
 
 ```http
 Authorization: Bearer [user_id].[signature]
@@ -24,110 +24,128 @@ Example: `Authorization: Bearer arnav.sk_7a9b...2f1c`
 
 ## 3. Core Endpoints
 
-### JSON Scheduling
-- **Endpoint**: `POST /schedule/json` (or `/api/schedule`)
-- **Body**: Standard JSON input
+### 🚀 Scheduling
+- **JSON**: `POST /api/schedule`
+- **CSV**: `POST /api/schedule/csv` (multipart/form-data)
 
-### CSV Scheduling
-- **Endpoint**: `POST /schedule/csv`
-- **Body**: `multipart/form-data` with files `volunteers_file`, `shifts_file`, and optional `assignments_file`.
+### 🛠️ Developer Tools
+- **Validate**: `POST /api/validate` - Check your JSON format without running the engine.
+- **Usage**: `GET /api/usage` - Get your current quota and usage history.
 
-### JSON Request Schema
+---
+
+## 4. Request & Response Schema (JSON)
+
+### Request Body
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `volunteers` | `Array` | List of available workers (id, name, group, max_hours). |
-| `unassigned_shifts` | `Array` | Shifts that need filling (id, start, end, required_groups). |
+| `volunteers` | `Array` | List of workers (`id`, `name`, `group`, `max_hours`). |
+| `unassigned_shifts` | `Array` | Shifts needing filling (`id`, `start`, `end`, `required_groups`). |
 | `current_assignments` | `Array` | (Optional) Existing assignments to lock in. |
 
-#### Example JSON Body
-```json
-{
-  "volunteers": [
-    { "id": "v1", "name": "Alice", "group": "Delegates", "max_hours": 20 }
-  ],
-  "unassigned_shifts": [
-    {
-      "id": "s1",
-      "start": "2026-05-01T09:00:00Z",
-      "end": "2026-05-01T17:00:00Z",
-      "required_groups": { "Delegates": 1 }
-    }
-  ],
-  "current_assignments": []
-}
-```
+### Response Body
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `assigned_shifts` | `Object` | Map of `shift_id` -> `[volunteer_ids]`. |
+| `unfilled_shifts` | `Array` | List of `shift_ids` with missing slots. |
+| `fairness_score` | `Float` | Workload distribution score (Lower is better). |
+| `conflicts` | `Array` | Detailed reasons for unfilled shifts. |
+| `volunteers` | `Object` | Map of `volunteer_id` -> `{assigned_hours, assigned_shifts}` summary. |
 
----
-
-## 4. Implementation Example (JavaScript)
-
-```javascript
-const API_URL = "https://shift-scheduler-api-xi.vercel.app/schedule/json";
-const API_KEY = "your_user_id.your_hmac_signature";
-
-async function generateSchedule(data) {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${API_KEY}`
-    },
-    body: JSON.stringify(data)
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    console.error("Scheduling failed:", error);
-    return null;
-  }
-
-  const result = await response.json();
-  console.log("Assignments:", result.assigned_shifts);
-  return result;
-}
-```
-
----
-
-## 5. Response Format (JSON Parity)
-
-The response maintains full backward compatibility with the v1.0 format:
-
+### 📝 Example API Response
 ```json
 {
   "assigned_shifts": {
-    "s1": ["v1"],
-    "s2": ["v2"]
+    "shift_101": ["vol_7", "vol_12"],
+    "shift_102": ["vol_3"]
   },
-  "unfilled_shifts": ["s3"],
+  "unfilled_shifts": ["shift_103"],
+  "fairness_score": 0.12,
   "conflicts": [
     {
-      "shift_id": "s3",
-      "group": "Staff",
-      "reasons": ["2 volunteers were at max hours"]
+      "shift_id": "shift_103",
+      "group": "Lifeguards",
+      "reasons": ["Volunteer vol_7 already reached max_hours (40.0)"]
     }
   ],
-  "fairness_score": 0.45,
   "volunteers": {
-    "v1": { "assigned_hours": 3.0, "assigned_shifts": ["s1"] },
-    "v2": { "assigned_hours": 2.0, "assigned_shifts": ["s2"] }
+    "vol_7": {
+      "assigned_hours": 40.0,
+      "assigned_shifts": ["shift_100", "shift_101"]
+    },
+    "vol_12": {
+      "assigned_hours": 8.0,
+      "assigned_shifts": ["shift_101"]
+    }
   }
 }
 ```
 
 ---
 
-## 6. Key Features
-- **Stateless Verification**: Blazing fast authentication using HMAC signatures.
-- **Optimized Performance**: The Go engine uses pre-calculated metrics and efficient grouping for sub-millisecond processing.
-- **Randomized Fairness**: Every request creates a different valid schedule to prevent scheduling bias while maintaining load balancing.
-- **Conflict Insights**: Granular feedback on why specific shifts couldn't be filled (e.g., "max hours", "overlaps").
-- **Fairness Scoring**: A mathematical score (Standard Deviation) to measure how evenly shifts are distributed.
-- **Pre-filling**: Lock in existing assignments and the API will work around them.
-- **CSV Support**: Bulk process schedules by uploading files directly to the API via multipart form-data.
+## 5. Implementation Examples
+
+### 📦 JavaScript SDK (Recommended)
+You can integrate the SDK in two ways:
+
+#### Option A: NPM (Modern)
+Install the package directly into your project:
+
+```bash
+# Install via GitHub until published to registry
+npm install github:greenmartialarts/shift-scheduler-api#path:packages/scheduler-sdk
+```
+
+```javascript
+import SchedulerAPI from '@greenmartialarts/scheduler-sdk';
+
+const scheduler = new SchedulerAPI("your_api_key");
+```
+
+#### Option B: CDN / Direct Script
+Load it directly from the API service:
+`<script src="https://shift-scheduler-api-3nxm.vercel.app/static/scripts/scheduler-sdk.js"></script>`
+
+```javascript
+const scheduler = new SchedulerAPI("your_api_key");
+```
+
+---
+
+### 🚀 Usage Example
+
+### 🐍 Python
+```python
+import requests
+
+API_URL = "https://shift-scheduler-api-xi.vercel.app/api/schedule"
+API_KEY = "your_api_key"
+
+def get_schedule(data):
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    response = requests.post(API_URL, json=data, headers=headers)
+    return response.json()
+```
+
+### 💻 cURL
+```bash
+curl -X POST https://shift-scheduler-api-xi.vercel.app/api/schedule \
+     -H "Authorization: Bearer YOUR_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "volunteers": [{"id": "v1", "name": "Alice", "max_hours": 20}],
+       "unassigned_shifts": [{"id": "s1", "start": "2026-05-01T09:00:00Z", "end": "2026-05-01T17:00:00Z", "required_groups": {"Staff": 1}}]
+     }'
+```
+
+---
+
+## 6. Troubleshooting
+- **401 Unauthorized**: Your HMAC signature is invalid or the key has been revoked.
+- **400 Bad Request**: Check `/api/validate` to see exactly where your JSON structure is failing.
+- **Rate Limit**: Use `/api/usage` to check if you have exceeded your daily quota.
 
 ---
 
 ## 7. Support
-If you encounter any issues or have feature requests, please contact us at:
 📧 **arnav.shah.2k10@gmail.com**

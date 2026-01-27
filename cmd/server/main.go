@@ -64,6 +64,8 @@ func main() {
 	{
 		api.POST("/schedule", h.ScheduleJSON)
 		api.POST("/schedule/csv", h.ScheduleCSV)
+		api.POST("/validate", h.ValidateInput)
+		api.GET("/usage", h.GetMyUsage)
 	}
 
 	// Python Parity Routes

@@ -25,9 +25,23 @@ A high-performance, developer-first API for intelligent shift scheduling. Re-eng
 | Resource | Description | Link |
 | :--- | :--- | :--- |
 | **Integration Guide** | Step-by-step guide for external developers | [Read Guide](./API_INTEGRATION_GUIDE.md) |
+| **JavaScript SDK** | Lightweight client for rapid integration | [View SDK](./static/scripts/scheduler-sdk.js) |
 | **Admin Dashboard** | Manage keys, view usage, and **test in the sandbox** | [Open Admin](https://shift-scheduler-api-xi.vercel.app/admin) |
 | **Live API** | Health check and version info | [Check API](https://shift-scheduler-api-3nxm.vercel.app/) |
 
+
+---
+
+## 🛠️ Integration for Developers
+
+Integrating the Scheduler API into your service is now easier than ever:
+
+1. **Get an API Key**: Send an email to request your HMAC key.
+2. **Use the SDK**: Drop `scheduler-sdk.js` into your frontend project.
+3. **Validate First**: Use the `/api/validate` endpoint to test your data structures.
+4. **Track Usage**: Monitor your quota programmatically via `/api/usage`.
+
+Refer to the [API Integration Guide](./API_INTEGRATION_GUIDE.md) for full details and multi-language examples.
 
 ---
 

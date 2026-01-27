@@ -1,0 +1,29 @@
+{
+  "name": "@greenmartialarts/scheduler-sdk",
+  "version": "1.0.0",
+  "description": "Lightweight JavaScript SDK for the Volunteer Scheduler API",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/greenmartialarts/shift-scheduler-api.git"
+  },
+  "keywords": [
+    "scheduler",
+    "api",
+    "sdk",
+    "volunteer",
+    "shift"
+  ],
+  "author": "Arnav Shah",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/greenmartialarts/shift-scheduler-api/issues"
+  },
+  "homepage": "https://github.com/greenmartialarts/shift-scheduler-api#readme"
+}
